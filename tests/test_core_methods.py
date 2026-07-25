@@ -2,8 +2,13 @@ from datetime import datetime, timezone
 import math
 import unittest
 
-from bian.data.schema import AlertRecord, TopologyRecord
-from bian.data.validators import ValidationError, normalize_scores, validate_scores
+from bian.data.schema import AlertRecord, IncidentRecord, TopologyRecord
+from bian.data.validators import (
+    ValidationError,
+    normalize_scores,
+    validate_incident,
+    validate_scores,
+)
 from bian.evaluation.hot_device import hot_device_ranking
 from bian.evaluation.metrics import top_k_accuracy
 from bian.methods.candidate_filter import top_p_candidates
@@ -79,6 +84,33 @@ class CoreMethodTests(unittest.TestCase):
     def test_missing_ground_truth_rejected(self):
         with self.assertRaises(ValidationError):
             top_k_accuracy([self.candidates], [None], 1)
+
+    def test_missing_required_incident_field_rejected(self):
+        incident = IncidentRecord(
+            "",
+            datetime(2026, 1, 1, tzinfo=timezone.utc),
+            self.candidates,
+            (self.alert("1", "A"),),
+            TopologyRecord(self.candidates, (("A", "B"), ("B", "C"))),
+        )
+        with self.assertRaises(ValidationError):
+            validate_incident(incident)
+
+    def test_unknown_topology_endpoint_rejected(self):
+        incident = IncidentRecord(
+            "bad-edge",
+            datetime(2026, 1, 1, tzinfo=timezone.utc),
+            self.candidates,
+            (self.alert("1", "A"),),
+            TopologyRecord(self.candidates, (("A", "UNKNOWN"),)),
+        )
+        with self.assertRaises(ValidationError):
+            validate_incident(incident)
+
+    def test_invalid_entropy_mode_rejected(self):
+        scores = {"A": 0.8, "B": 0.1, "C": 0.1}
+        with self.assertRaises(ValidationError):
+            score_entropy(scores, self.candidates, "paper-unknown")
 
 
 if __name__ == "__main__":

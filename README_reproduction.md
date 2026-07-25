@@ -42,3 +42,44 @@ real incidents, or claim the paper's accuracy.
 
 See `configs/README.md` for configuration provenance and
 `data/real/README_expected_schema.md` for the future real-data contract.
+
+## Run the first-phase validation
+
+No third-party dependency is required:
+
+```bash
+PYTHONPATH=src python3 -m unittest discover -s tests -v
+python3 -m scripts.run_mock \
+  --config configs/experiments/mock_pipeline.yaml \
+  2>&1 | tee "logs/mock_run_$(date +%Y%m%d_%H%M%S).log"
+```
+
+Each run creates `outputs/mock_run_YYYYMMDD_HHMMSS/` containing:
+
+- `summary.md`
+- `metrics.json`
+- `predictions.jsonl`
+- `resolved_config.yaml`
+- `environment.txt`
+- `run.log`
+- `tests.log`
+- `changed_files.txt`
+
+Outputs and logs are deliberately ignored by Git. The committed mock generator
+uses only synthetic device names and synthetic events. Re-running with the same
+seed produces identical incidents, scores, rankings, and metrics.
+
+## Implementation notes
+
+- The topology method uses deterministic shortest paths and omits a candidate
+  pair path when another candidate lies inside that path. The paper's
+  non-candidate device-group aggregation is reserved for a future extension.
+- Equal event timestamps receive deterministic microsecond offsets so the
+  materialized global timeline is strictly ordered.
+- Top-p is applied after softmax, following the paper's description. Its
+  threshold is an `implementation-choice`.
+- Raw and normalized entropy are supported; raw entropy is the default
+  `implementation-choice`. The threshold `0.75` is `paper-reported`, while the
+  paper does not report whether its entropy was normalized.
+- The mock score formula is not a paper algorithm. It is a deterministic test
+  double used only to exercise orchestration and validation.
