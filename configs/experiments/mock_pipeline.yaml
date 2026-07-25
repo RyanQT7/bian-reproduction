@@ -1,0 +1,34 @@
+{
+  "label": "流程验证结果 / Pipeline Validation Result",
+  "seed": 20260725,
+  "rank_rounds": {
+    "value": 3,
+    "provenance": "paper-reported"
+  },
+  "entropy_threshold": {
+    "value": 0.75,
+    "provenance": "paper-reported"
+  },
+  "entropy_mode": {
+    "value": "raw",
+    "provenance": "implementation-choice"
+  },
+  "stage2_device_top_p": {
+    "value": 0.8,
+    "provenance": "implementation-choice"
+  },
+  "generation": {
+    "temperature": {
+      "value": 0.0,
+      "provenance": "unknown/not-reported"
+    },
+    "top_p": {
+      "value": 1.0,
+      "provenance": "unknown/not-reported"
+    },
+    "max_tokens": {
+      "value": 512,
+      "provenance": "unknown/not-reported"
+    }
+  }
+}

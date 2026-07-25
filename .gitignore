@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials*
+secrets*
+
+# Local machine paths/configuration
+configs/paths.yaml
+configs/paths.local.yaml
+*.local.yaml
+
+# Real/private datasets
+data/real/*
+!data/real/README_expected_schema.md
+
+# Model weights and checkpoints
+pretrained_models/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.gguf
+
+# Training/runtime artifacts
+checkpoints/
+wandb/
+runs/
+
+# Logs and generated outputs
+logs/*
+!logs/.gitkeep
+outputs/*
+!outputs/.gitkeep
+
+# Papers remain local and read-only
+paper/*.pdf
+
+# Archives and large generated files
+*.tar
+*.tar.gz
+*.zip
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

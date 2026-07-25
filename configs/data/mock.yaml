@@ -1,0 +1,13 @@
+{
+  "_provenance": "implementation-choice",
+  "adapter": "mock",
+  "seed": 20260725,
+  "incident_count": 3,
+  "candidate_count": 4,
+  "source_to_anomaly_mapping": {
+    "_provenance": "implementation-choice",
+    "dashboard_alarm": ["device_down", "flapping"],
+    "ping_log": ["traffic_drop"],
+    "change_history": ["network_change"]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "_provenance": "implementation-choice",
+  "project_root": ".",
+  "outputs_dir": "outputs",
+  "logs_dir": "logs",
+  "model_paths": {
+    "small": "/home/xieqitong/pretrained_models/DeepSeek-R1-Distill-Qwen-7B",
+    "large": "/home/xieqitong/pretrained_models/DeepSeek-R1-Distill-Qwen-32B"
+  },
+  "_note": "Model paths are read-only examples. Copy to ignored paths.local.yaml for local use."
+}
