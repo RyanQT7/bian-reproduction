@@ -31,6 +31,13 @@ def main() -> int:
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--small-model", required=True)
     parser.add_argument("--large-model", required=True)
+    parser.add_argument(
+        "--model-configuration", default="dual_7b_pipeline_validation"
+    )
+    parser.add_argument(
+        "--result-label", default="Dual-7B Pipeline Validation Result"
+    )
+    parser.add_argument("--development-dataset", action="store_true")
     args = parser.parse_args()
     incidents = load_jsonl(args.bundle_root / "experiment" / "incidents.jsonl")
     inventory = json.loads(
@@ -76,8 +83,13 @@ def main() -> int:
             "rank_rounds": args.rank_rounds,
             "small_model": args.small_model,
             "large_model": args.large_model,
-            "model_configuration": "dual_7b_pipeline_validation",
+            "model_configuration": args.model_configuration,
+            "result_label": args.result_label,
             "paper_model_equivalent": False,
+            "development_dataset": args.development_dataset,
+            "strict_blind_evaluation": False if args.development_dataset else None,
+            "ground_truth_used_for_post_run_diagnostics": args.development_dataset,
+            "ground_truth_available_to_inference": False,
             "stage1_large_model_replaced_by_7b": True,
             "stage2_large_model_replaced_by_7b": True,
             "prompt_sha256": prompt_digest.hexdigest(),
