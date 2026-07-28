@@ -33,6 +33,9 @@ only to locate raw directories and are never included in model inputs.
 The preprocessing configuration is shared across all regions and devices.
 Per-device records contain the same source keys. A source that does not apply
 to a role or has no records is represented explicitly rather than omitted.
+Dataset-window completeness is checked at the region/source-file level.
+Device-level gaps inside an otherwise covered window are retained as `partial`
+or `empty`, because a telemetry interruption can itself be RCA evidence.
 High-volume raw five-tuple records are excluded uniformly; already aggregated
 traffic-flow metrics remain available.
 

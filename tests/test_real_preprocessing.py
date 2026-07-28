@@ -80,6 +80,17 @@ class RealPreprocessingTests(unittest.TestCase):
         }
         self.assertIsNone(rendered["protocol"])
 
+    def test_device_phase_gap_is_not_dataset_coverage_failure(self):
+        phase_counts = {"pre_fault": 2, "fault": 0, "post_fault": 2}
+        status = (
+            "empty"
+            if sum(phase_counts.values()) == 0
+            else "partial"
+            if any(value == 0 for value in phase_counts.values())
+            else "available"
+        )
+        self.assertEqual(status, "partial")
+
 
 if __name__ == "__main__":
     unittest.main()

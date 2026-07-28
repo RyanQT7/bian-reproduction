@@ -339,6 +339,7 @@ def preprocess_dataset(
     }
     skipped_asset_rows = 0
     parse_error_rows = 0
+    file_coverage: dict[tuple[str, str], list[datetime | None]] = {}
 
     for region_dir, region_id in sorted(region_mapping.items(), key=lambda item: item[1]):
         processed_dir = region_dir / "processed"
@@ -368,6 +369,19 @@ def preprocess_dataset(
                     except ValidationError:
                         parse_error_rows += 1
                         continue
+                    coverage = file_coverage.setdefault(
+                        (region_id, source), [None, None]
+                    )
+                    coverage[0] = (
+                        timestamp
+                        if coverage[0] is None
+                        else min(coverage[0], timestamp)
+                    )
+                    coverage[1] = (
+                        timestamp
+                        if coverage[1] is None
+                        else max(coverage[1], timestamp)
+                    )
                     node_id = node_id_for_row(source, row, region_id)
                     if node_id is None:
                         skipped_asset_rows += 1
@@ -451,8 +465,39 @@ def preprocess_dataset(
         )
 
     coverage_failures: list[dict[str, str]] = []
-    incident_summaries = []
     periodic_sources = set(config["periodic_sources"])
+    for incident in incidents:
+        slice_start = parse_utc(incident["slice_start_time_utc"])
+        slice_end = parse_utc(incident["slice_end_time_utc"])
+        for region_id in sorted(region_mapping.values()):
+            for source in sorted(periodic_sources):
+                coverage = file_coverage.get((region_id, source), [None, None])
+                if (
+                    coverage[0] is None
+                    or coverage[1] is None
+                    or coverage[0] > slice_start
+                    or coverage[1] < slice_end
+                ):
+                    coverage_failures.append(
+                        {
+                            "incident_id": incident["incident_id"],
+                            "region_id": region_id,
+                            "source": source,
+                            "required_start_utc": incident["slice_start_time_utc"],
+                            "required_end_utc": incident["slice_end_time_utc"],
+                            "available_start_utc": (
+                                coverage[0].isoformat().replace("+00:00", "Z")
+                                if coverage[0]
+                                else ""
+                            ),
+                            "available_end_utc": (
+                                coverage[1].isoformat().replace("+00:00", "Z")
+                                if coverage[1]
+                                else ""
+                            ),
+                        }
+                    )
+    incident_summaries = []
     for incident in incidents:
         incident_id = incident["incident_id"]
         incident_dir = output_root / incident_id
@@ -487,24 +532,19 @@ def preprocess_dataset(
                     status = "unavailable_by_role"
                 elif total_rows == 0:
                     status = "empty"
+                elif any(
+                    phase_records[phase]["row_count"] == 0 for phase in phases
+                ):
+                    status = "partial"
                 else:
                     status = "available"
-                if applicable and source in periodic_sources:
-                    missing_phases = [
-                        phase for phase in phases if phase_records[phase]["row_count"] == 0
-                    ]
-                    if missing_phases:
-                        coverage_failures.append(
-                            {
-                                "incident_id": incident_id,
-                                "node_id": node_id,
-                                "source": source,
-                                "missing_phases": ",".join(missing_phases),
-                            }
-                        )
+                missing_phases = [
+                    phase for phase in phases if phase_records[phase]["row_count"] == 0
+                ]
                 sources[source] = {
                     "status": status,
                     "applicable": applicable,
+                    "missing_phases": missing_phases,
                     "phases": phase_records,
                 }
             devices.append(
