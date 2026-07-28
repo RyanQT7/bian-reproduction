@@ -70,6 +70,16 @@ class RealPreprocessingTests(unittest.TestCase):
             path.write_text("a,b\n1,2\n3,4\n", encoding="utf-8")
             self.assertEqual(count_csv_records(path), 2)
 
+    def test_optional_topology_protocol_can_be_null(self):
+        edge = {"source": "a", "target": "b", "edge_type": "physical"}
+        rendered = {
+            "source": edge["source"],
+            "target": edge["target"],
+            "edge_type": edge["edge_type"],
+            "protocol": edge.get("protocol"),
+        }
+        self.assertIsNone(rendered["protocol"])
+
 
 if __name__ == "__main__":
     unittest.main()

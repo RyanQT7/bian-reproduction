@@ -545,7 +545,7 @@ def preprocess_dataset(
                         "source": edge["source"],
                         "target": edge["target"],
                         "edge_type": edge["edge_type"],
-                        "protocol": edge["protocol"],
+                        "protocol": edge.get("protocol"),
                     }
                     for edge in topology["edges"]
                 ],
