@@ -1,0 +1,35 @@
+{
+  "_provenance": "implementation-choice",
+  "result_label": "Dual-7B Engineering-Enhanced Pipeline Validation",
+  "model_configuration": "dual_7b_engineering_enhanced",
+  "paper_model_equivalent": false,
+  "development_dataset": true,
+  "strict_blind_evaluation": false,
+  "ground_truth_used_for_post_run_diagnostics": true,
+  "ground_truth_available_to_inference": false,
+  "feature_rule_version": "engineering-evidence-v2",
+  "stage1": {
+    "weights": {
+      "deterministic_feature_score": 0.35,
+      "model_anomaly_score": 0.10,
+      "temporal_change_score": 0.15,
+      "direct_fault_evidence_score": 0.35,
+      "data_quality_adjustment": 1.0,
+      "symptom_likelihood_penalty": 0.20
+    },
+    "top_p": 0.9,
+    "min_candidates": 10,
+    "max_candidates": 15
+  },
+  "stage2": {
+    "weights": {
+      "local_anomaly_score": 0.30,
+      "temporal_precedence_score": 0.25,
+      "topology_upstream_score": 0.25,
+      "fault_pattern_compatibility_score": 0.20,
+      "symptom_likelihood_penalty": 0.15
+    }
+  },
+  "seed": 42,
+  "rank_rounds": 3
+}
