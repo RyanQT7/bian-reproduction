@@ -61,6 +61,30 @@ def validate_predictions(
 
     for record in records:
         incident_id = str(record.get("incident_id", "<missing>"))
+        status = record.get("prediction_status", "success")
+        if status == "prediction_failed":
+            forbidden = {
+                "top5_root_causes",
+                "predicted_fault_type",
+                "predicted_fault_category",
+                "fault_type_top3",
+                "rank_of_ranks",
+            } & set(record)
+            if forbidden:
+                errors.append(
+                    f"{incident_id}: failed prediction contains answer fields "
+                    f"{sorted(forbidden)}"
+                )
+            if not isinstance(record.get("error_type"), str) or not isinstance(
+                record.get("error"), str
+            ):
+                errors.append(
+                    f"{incident_id}: failed prediction requires error_type and error"
+                )
+            continue
+        if status != "success":
+            errors.append(f"{incident_id}: unknown prediction_status {status!r}")
+            continue
         top5 = record.get("top5_root_causes")
         if not isinstance(top5, list) or len(top5) != 5:
             errors.append(f"{incident_id}: top5_root_causes must contain exactly 5 items")
@@ -157,7 +181,7 @@ def freeze_predictions(
 ) -> dict[str, Any]:
     if not validation.get("valid"):
         raise ValidationError("cannot freeze invalid predictions")
-    frozen_path = output_dir / "predictions.frozen.jsonl"
+    frozen_path = output_dir / "predictions_frozen.jsonl"
     checksum_path = output_dir / "predictions.sha256"
     validation_path = output_dir / "predictions.schema_validation.json"
     manifest_path = output_dir / "run_manifest.json"

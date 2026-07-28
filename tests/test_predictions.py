@@ -97,6 +97,17 @@ class PredictionValidationTests(unittest.TestCase):
                     manifest={"test": True},
                 )
 
+    def test_explicit_failed_prediction_is_valid_but_cannot_contain_answers(self):
+        failed = {
+            "incident_id": "incident-0001",
+            "prediction_status": "prediction_failed",
+            "error_type": "ValidationError",
+            "error": "model output invalid after retries",
+        }
+        self.assertTrue(self.validate([failed])["valid"])
+        failed["top5_root_causes"] = self.record()["top5_root_causes"]
+        self.assertFalse(self.validate([failed])["valid"])
+
 
 if __name__ == "__main__":
     unittest.main()

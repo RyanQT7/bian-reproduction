@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+from importlib.metadata import distributions
 import json
 from pathlib import Path
 import subprocess
@@ -54,6 +56,15 @@ def main() -> int:
         text=True,
         check=True,
     ).stdout.strip()
+    prompt_digest = hashlib.sha256()
+    for prompt_path in sorted((PROJECT_ROOT / "src/bian/prompts").glob("*.txt")):
+        prompt_digest.update(prompt_path.name.encode())
+        prompt_digest.update(prompt_path.read_bytes())
+    dependencies = sorted(
+        f"{item.metadata['Name']}=={item.version}"
+        for item in distributions()
+        if item.metadata.get("Name")
+    )
     result = freeze_predictions(
         predictions_path=args.predictions,
         output_dir=args.output_dir,
@@ -65,6 +76,12 @@ def main() -> int:
             "rank_rounds": args.rank_rounds,
             "small_model": args.small_model,
             "large_model": args.large_model,
+            "model_configuration": "dual_7b_pipeline_validation",
+            "paper_model_equivalent": False,
+            "stage1_large_model_replaced_by_7b": True,
+            "stage2_large_model_replaced_by_7b": True,
+            "prompt_sha256": prompt_digest.hexdigest(),
+            "dependencies": dependencies,
         },
     )
     print(f"Frozen: {result['frozen_path']}")
