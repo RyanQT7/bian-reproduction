@@ -28,6 +28,7 @@ from bian.real_inference import (
     compact_device,
     cumulative_top_p,
     merge_stage1,
+    render_device_evidence,
     topology_subgraph,
     utc_now,
 )
@@ -59,31 +60,11 @@ def smoke_structured(backend: Dual7BBackend) -> dict:
         prompt_version="dual7b-a-device-v1",
         payload={
             "incident_id": "mock-smoke",
-            "devices": [
-                {
-                    "node_id": node,
-                    "device_family": "br" if "br-" in node else "service",
-                    "source_states": {
-                        "node_metrics": {
-                            "status": status,
-                            "missing_phases": ["post_fault"] if status == "partial" else [],
-                        }
-                    },
-                    "top_changed_signals": (
-                        [
-                            {
-                                "source": "routing_metrics",
-                                "metric": "bgp_session_up",
-                                "pre_mean": 1.0,
-                                "fault_mean": 0.0,
-                                "post_mean": 1.0,
-                                "relative_change": 1.0,
-                            }
-                        ]
-                        if node == nodes[0]
-                        else []
-                    ),
-                }
+            "required_node_ids": list(nodes),
+            "device_evidence_lines": [
+                f"node={node}|family={'br' if 'br-' in node else 'service'}|"
+                f"states=node_metrics={status}|"
+                f"top_changes={'routing.bgp_session_up:1->0->post:1,rel:1' if node == nodes[0] else 'none'}"
                 for node, status in zip(
                     nodes, ("available", "partial", "empty", "missing", "collection_failed")
                 )
@@ -172,7 +153,10 @@ def run_incident(
             payload={
                 "incident_id": incident_id,
                 "batch_index": batch_index,
-                "devices": batch,
+                "device_evidence_lines": [
+                    render_device_evidence(item) for item in batch
+                ],
+                "required_node_ids": list(nodes),
             },
             validator=lambda value, expected=nodes: validate_device_analysis(
                 value, expected

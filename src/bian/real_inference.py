@@ -74,6 +74,28 @@ def compact_device(device: dict[str, Any], max_signals: int) -> dict[str, Any]:
     }
 
 
+def render_device_evidence(device: dict[str, Any]) -> str:
+    """Render a compact, schema-neutral evidence line for the model."""
+    states = ",".join(
+        f"{name}={value['status']}"
+        + (
+            f"(missing:{'+'.join(value['missing_phases'])})"
+            if value["missing_phases"]
+            else ""
+        )
+        for name, value in sorted(device["source_states"].items())
+    )
+    signals = ";".join(
+        f"{item['source']}.{item['metric']}:{item['pre_mean']}->{item['fault_mean']}"
+        f"->post:{item['post_mean']},rel:{item['relative_change']}"
+        for item in device["top_changed_signals"]
+    )
+    return (
+        f"node={device['node_id']}|family={device['device_family']}|"
+        f"states={states}|top_changes={signals or 'none'}"
+    )
+
+
 def cumulative_top_p(
     scores: dict[str, float],
     candidates: tuple[str, ...],

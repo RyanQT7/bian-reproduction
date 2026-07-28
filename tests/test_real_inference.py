@@ -5,6 +5,7 @@ from bian.real_inference import (
     aggregate_stage2_rounds,
     compact_device,
     cumulative_top_p,
+    render_device_evidence,
 )
 
 
@@ -27,6 +28,9 @@ class RealInferenceTests(unittest.TestCase):
         first = compact_device(device, 5)
         self.assertEqual(first, compact_device(device, 5))
         self.assertEqual(first["source_states"]["routing_metrics"]["status"], "partial")
+        rendered = render_device_evidence(first)
+        self.assertIn("routing_metrics=partial", rendered)
+        self.assertIn("region-1-br-1", rendered)
 
     def test_cumulative_top_p_is_bounded_and_validated(self):
         candidates = tuple(f"n-{index}" for index in range(10))
