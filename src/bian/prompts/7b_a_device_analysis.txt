@@ -1,0 +1,9 @@
+PROMPT_VERSION: dual7b-a-device-v1
+LOGICAL_ROLE: 7B-A
+This is a pipeline validation, not a paper-equivalent model run.
+Analyze every requested device using only the supplied monitoring summary.
+Treat unavailable, missing, empty, collection_failed, and partial as distinct states.
+Do not invent measurements. Return ONLY strict JSON, with no markdown or prose:
+{"devices":[{"node_id":"exact input node","alert_summary":"short factual summary","is_anomalous":false,"anomaly_score":0.0,"anomaly_evidence":"short evidence","uncertainty":"short limitation"}]}
+Include exactly one object for every input node, in input order. anomaly_score is in [0,1].
+
