@@ -8,6 +8,7 @@ from bian.models.structured_output import (
     validate_stage1,
     validate_stage2,
 )
+from bian.models.dual_7b_backend import Dual7BBackend, GenerationConfig
 
 
 class StructuredOutputTests(unittest.TestCase):
@@ -88,6 +89,14 @@ class StructuredOutputTests(unittest.TestCase):
         value["root_causes"][0]["node_id"] = "region-1-sw-core"
         with self.assertRaises(ValidationError):
             validate_stage2(value, nodes, taxonomy)
+
+    def test_backend_configuration_has_finite_input_limit(self):
+        backend = Dual7BBackend(
+            __import__("pathlib").Path("/read-only/model"),
+            config=GenerationConfig(max_input_tokens=8192),
+            prompt_dir=__import__("pathlib").Path("/prompts"),
+        )
+        self.assertEqual(backend.config.max_input_tokens, 8192)
 
 
 if __name__ == "__main__":

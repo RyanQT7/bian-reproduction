@@ -392,7 +392,7 @@ def main() -> int:
     # Validate one smallest real incident first, then continue with all remaining cases.
     ordered = sorted(inputs, key=lambda path: (path.stat().st_size, path.name))
     completed: set[str] = set()
-    for path in ordered:
+    for path_index, path in enumerate(ordered):
         incident = json.loads(path.read_text(encoding="utf-8"))
         incident_id = incident["incident_id"]
         incident_output = reports_dir / incident_id
@@ -428,6 +428,10 @@ def main() -> int:
             f"model_calls={len(calls)}",
             flush=True,
         )
+        if path_index == 0 and prediction["prediction_status"] != "success":
+            raise ValidationError(
+                f"single-case gate failed for {incident_id}; refusing to run remaining cases"
+            )
     manifest = {
         "result_label": config["result_label"],
         "model_configuration": config["model_configuration"],

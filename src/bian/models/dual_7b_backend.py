@@ -117,10 +117,15 @@ class Dual7BBackend:
             inputs = self._tokenizer(
                 rendered,
                 return_tensors="pt",
-                truncation=True,
-                max_length=self.config.max_input_tokens,
+                truncation=False,
             ).to("cuda:0")
             input_tokens = int(inputs["input_ids"].shape[-1])
+            if input_tokens > self.config.max_input_tokens:
+                del inputs
+                raise ValidationError(
+                    f"{role}/{prompt_name} input has {input_tokens} tokens, exceeding "
+                    f"configured limit {self.config.max_input_tokens}; refusing to truncate"
+                )
             torch.cuda.reset_peak_memory_stats(0)
             started = time.perf_counter()
             with torch.inference_mode():
@@ -171,4 +176,3 @@ class Dual7BBackend:
 
     def call_manifest(self) -> list[dict[str, Any]]:
         return [asdict(call) for call in self.calls]
-
