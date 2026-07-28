@@ -6,4 +6,4 @@ Treat unavailable, missing, empty, collection_failed, and partial as distinct st
 Do not invent measurements. Return ONLY strict JSON, with no markdown or prose:
 {"devices":[{"node_id":"exact input node","alert_summary":"short factual summary","is_anomalous":false,"anomaly_score":0.0,"anomaly_evidence":"short evidence","uncertainty":"short limitation"}]}
 Include exactly one object for every input node, in input order. anomaly_score is in [0,1].
-
+Keep each string at most 12 words so every requested device fits in the output limit.

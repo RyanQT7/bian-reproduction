@@ -1,0 +1,25 @@
+{
+  "_provenance": "implementation-choice",
+  "result_label": "Dual-7B Pipeline Validation Result",
+  "model_configuration": "dual_7b_pipeline_validation",
+  "paper_model_equivalent": false,
+  "stage1_large_model_replaced_by_7b": true,
+  "stage2_large_model_replaced_by_7b": true,
+  "seed": 42,
+  "rank_rounds": 3,
+  "entropy_mode": "raw",
+  "entropy_threshold": 0.75,
+  "stage2_top_p": 0.85,
+  "stage2_max_candidates": 15,
+  "device_batch_size": 24,
+  "stage1_batch_size": 36,
+  "max_signals_per_device": 12,
+  "max_timeline_events": 40,
+  "generation": {
+    "max_input_tokens": 8192,
+    "max_new_tokens": 2048,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "retries": 2
+  }
+}
