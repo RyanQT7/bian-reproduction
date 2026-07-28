@@ -91,7 +91,10 @@ def validate_device_analysis(
 
 
 def validate_stage1(
-    value: dict[str, Any], expected_nodes: tuple[str, ...]
+    value: dict[str, Any],
+    expected_nodes: tuple[str, ...],
+    *,
+    require_positive: bool = True,
 ) -> dict[str, Any]:
     _require_exact_keys(value, {"scores"}, "$")
     if not isinstance(value["scores"], list):
@@ -110,8 +113,9 @@ def validate_stage1(
         raw[node] = float(score)
     if set(raw) != set(expected_nodes):
         raise ValidationError("Stage 1 scores must cover exactly all candidates")
-    normalized = normalize_scores(raw)
-    return {"scores": normalized}
+    if require_positive:
+        return {"scores": normalize_scores(raw)}
+    return {"scores": raw}
 
 
 def validate_stage2(

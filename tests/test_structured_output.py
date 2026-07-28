@@ -61,6 +61,20 @@ class StructuredOutputTests(unittest.TestCase):
         }
         result = validate_stage1(value, nodes)
         self.assertAlmostEqual(sum(result["scores"].values()), 1.0)
+        zeros = {
+            "scores": [
+                {"node_id": nodes[0], "score": 0},
+                {"node_id": nodes[1], "score": 0},
+            ]
+        }
+        self.assertEqual(
+            sum(
+                validate_stage1(
+                    zeros, nodes, require_positive=False
+                )["scores"].values()
+            ),
+            0,
+        )
         value["scores"][0]["score"] = float("nan")
         with self.assertRaises(ValidationError):
             validate_stage1(value, nodes)

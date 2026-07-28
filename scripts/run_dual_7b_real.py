@@ -194,7 +194,9 @@ def run_incident(
                 "batch_index": batch_index,
                 "device_analyses": [analysis_by_node[node] for node in nodes],
             },
-            validator=lambda value, expected=nodes: validate_stage1(value, expected),
+            validator=lambda value, expected=nodes: validate_stage1(
+                value, expected, require_positive=False
+            ),
         )
         stage1_parts.append(result)
     stage1 = merge_stage1(stage1_parts)
