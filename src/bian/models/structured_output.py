@@ -133,12 +133,29 @@ def validate_stage2(
     for index, item in enumerate(roots):
         if not isinstance(item, dict):
             raise ValidationError(f"root_causes[{index}] must be an object")
-        _require_exact_keys(item, {"node_id", "score"}, f"root_causes[{index}]")
+        required_root_keys = {"node_id", "score"}
+        optional_root_keys = {"anomaly_score", "anomaly_evidence", "uncertainty"}
+        if not required_root_keys <= set(item) or not set(item) <= (
+            required_root_keys | optional_root_keys
+        ):
+            raise ValidationError(
+                f"root_causes[{index}] must contain node_id/score and only "
+                "documented optional evidence fields"
+            )
         node, score = item["node_id"], item["score"]
         if node not in allowed_nodes or node in root_nodes:
             raise ValidationError(f"illegal or duplicate root node {node!r}")
         if not isinstance(score, (int, float)) or not math.isfinite(score) or score < 0:
             raise ValidationError(f"{node}: root score must be finite and non-negative")
+        if "anomaly_score" in item and (
+            not isinstance(item["anomaly_score"], (int, float))
+            or not math.isfinite(item["anomaly_score"])
+            or item["anomaly_score"] < 0
+        ):
+            raise ValidationError(f"{node}: optional anomaly_score is invalid")
+        for field in ("anomaly_evidence", "uncertainty"):
+            if field in item and not isinstance(item[field], str):
+                raise ValidationError(f"{node}: optional {field} must be a string")
         root_nodes.add(node)
         clean_roots.append(
             {

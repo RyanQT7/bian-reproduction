@@ -9,5 +9,6 @@ Return preferably 5 or more distinct root causes (never fewer than 1) and at lea
 3 distinct fault types, ordered best first. Unlisted allowed candidates are treated
 as lower-ranked than every listed candidate by Rank of Ranks.
 All scores/confidences must be finite and non-negative.
-Root-cause items MUST contain exactly node_id and score. Fault-type items MUST contain
-exactly fault_type and confidence. Do not output reason, category, analysis, or extra keys.
+Root-cause items MUST contain node_id and score. They may optionally contain
+anomaly_score, anomaly_evidence, and uncertainty. Fault-type items MUST contain exactly
+fault_type and confidence. Do not output reason, category, analysis, or other keys.

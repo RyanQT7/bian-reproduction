@@ -102,6 +102,10 @@ class StructuredOutputTests(unittest.TestCase):
             ],
         }
         self.assertEqual(len(validate_stage2(value, nodes, taxonomy)["root_causes"]), 5)
+        value["root_causes"][0]["anomaly_score"] = 0.5
+        value["root_causes"][0]["anomaly_evidence"] = "evidence"
+        value["root_causes"][0]["uncertainty"] = "partial"
+        self.assertEqual(len(validate_stage2(value, nodes, taxonomy)["root_causes"]), 5)
         value["root_causes"][0]["node_id"] = "region-1-sw-core"
         with self.assertRaises(ValidationError):
             validate_stage2(value, nodes, taxonomy)
