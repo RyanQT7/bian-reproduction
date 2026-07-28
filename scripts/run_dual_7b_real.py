@@ -152,24 +152,32 @@ def run_incident(
     for batch_index, batch in enumerate(
         batched(compact, config["device_batch_size"]), start=1
     ):
-        nodes = tuple(item["node_id"] for item in batch)
-        result = backend.generate_json(
-            role="7B-A",
-            prompt_name="7b_a_device_analysis",
-            prompt_version="dual7b-a-device-v1",
-            payload={
-                "incident_id": incident_id,
-                "batch_index": batch_index,
-                "device_evidence_lines": [
-                    render_device_evidence(item) for item in batch
-                ],
-                "required_node_ids": list(nodes),
-            },
-            validator=lambda value, expected=nodes: validate_device_analysis(
-                value, expected
-            ),
+        requests = []
+        for item in batch:
+            node = item["node_id"]
+            requests.append(
+                {
+                    "role": "7B-A",
+                    "prompt_name": "7b_a_device_analysis",
+                    "prompt_version": "dual7b-a-device-v1",
+                    "payload": {
+                        "incident_id": incident_id,
+                        "batch_index": batch_index,
+                        "device_evidence_lines": [render_device_evidence(item)],
+                        "required_node_ids": [node],
+                    },
+                    "validator": (
+                        lambda value, expected=(node,): validate_device_analysis(
+                            value, expected
+                        )
+                    ),
+                }
+            )
+        results = backend.generate_json_batch(
+            requests, max_new_tokens=config["device_max_new_tokens"]
         )
-        analyses.extend(result["devices"])
+        for result in results:
+            analyses.extend(result["devices"])
     analysis_by_node = {item["node_id"]: item for item in analyses}
 
     stage1_parts = []

@@ -190,5 +190,111 @@ class Dual7BBackend:
             f"{previous_error}"
         )
 
+    def generate_json_batch(
+        self,
+        requests: list[dict[str, Any]],
+        *,
+        max_new_tokens: int,
+    ) -> list[dict[str, Any]]:
+        """Generate independent one-object requests together on the same GPU."""
+        import torch
+
+        self.load()
+        assert self._model is not None and self._tokenizer is not None
+        self._tokenizer.padding_side = "left"
+        if self._tokenizer.pad_token_id is None:
+            self._tokenizer.pad_token_id = self._tokenizer.eos_token_id
+        results: list[dict[str, Any] | None] = [None] * len(requests)
+        pending = list(range(len(requests)))
+        errors: dict[int, str] = {}
+        for attempt in range(1, self.config.retries + 2):
+            rendered_batch = []
+            for index in pending:
+                request = requests[index]
+                prompt = self._prompt(
+                    request["prompt_name"], request["payload"], errors.get(index)
+                )
+                rendered = self._tokenizer.apply_chat_template(
+                    [{"role": "user", "content": prompt}],
+                    tokenize=False,
+                    add_generation_prompt=True,
+                )
+                rendered_batch.append(rendered + "<think>\n</think>\n")
+            inputs = self._tokenizer(
+                rendered_batch, return_tensors="pt", padding=True, truncation=False
+            ).to("cuda:0")
+            token_counts = [
+                int(value) for value in inputs["attention_mask"].sum(dim=1).tolist()
+            ]
+            if max(token_counts) > self.config.max_input_tokens:
+                del inputs
+                raise ValidationError(
+                    f"batched model input exceeds {self.config.max_input_tokens} tokens"
+                )
+            padded_length = int(inputs["input_ids"].shape[-1])
+            torch.cuda.reset_peak_memory_stats(0)
+            started = time.perf_counter()
+            with torch.inference_mode():
+                outputs = self._model.generate(
+                    **inputs,
+                    max_new_tokens=max_new_tokens,
+                    do_sample=False,
+                    pad_token_id=self._tokenizer.pad_token_id,
+                    use_cache=True,
+                )
+            torch.cuda.synchronize()
+            elapsed = time.perf_counter() - started
+            next_pending = []
+            for batch_position, index in enumerate(pending):
+                request = requests[index]
+                new_ids = outputs[batch_position, padded_length:]
+                raw = self._tokenizer.decode(new_ids, skip_special_tokens=True).strip()
+                thinking = ""
+                repair_used = False
+                error = None
+                try:
+                    try:
+                        parsed, thinking = parse_strict_json(raw)
+                    except ValidationError:
+                        import json_repair
+
+                        thinking, answer = strip_thinking(raw)
+                        if answer.startswith("```json") and answer.endswith("```"):
+                            answer = answer[len("```json") : -len("```")].strip()
+                        elif answer.startswith("```") and answer.endswith("```"):
+                            answer = answer[len("```") : -len("```")].strip()
+                        parsed = json_repair.loads(answer)
+                        if not isinstance(parsed, dict):
+                            raise ValidationError(
+                                "repaired model answer must be an object"
+                            )
+                        repair_used = True
+                    results[index] = request["validator"](parsed)
+                except (ValidationError, ValueError, TypeError) as exc:
+                    error = f"{type(exc).__name__}: {exc}"
+                    errors[index] = error
+                    next_pending.append(index)
+                self.calls.append(
+                    ModelCall(
+                        role=request["role"],
+                        prompt_version=request["prompt_version"],
+                        attempt=attempt,
+                        input_tokens=token_counts[batch_position],
+                        output_tokens=int(new_ids.numel()),
+                        elapsed_seconds=elapsed,
+                        peak_gpu_memory_mib=torch.cuda.max_memory_allocated(0) / 1024**2,
+                        raw_output=raw,
+                        thinking=thinking,
+                        json_repair_used=repair_used,
+                        error=error,
+                    )
+                )
+            del outputs, inputs
+            pending = next_pending
+            if not pending:
+                return [result for result in results if result is not None]
+        failed = ", ".join(f"{index}: {errors[index]}" for index in pending)
+        raise ValidationError(f"batched structured generation failed: {failed}")
+
     def call_manifest(self) -> list[dict[str, Any]]:
         return [asdict(call) for call in self.calls]
