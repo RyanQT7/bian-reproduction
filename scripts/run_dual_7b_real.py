@@ -91,6 +91,15 @@ def smoke_structured(backend: Dual7BBackend) -> dict:
         },
         validator=lambda value: validate_device_analysis(value, nodes),
     )
+    # The Stage 1 smoke fixture must exercise normalization, so explicitly supply
+    # one synthetic anomaly after independently validating the 7B-A response.
+    device_result["devices"][0].update(
+        {
+            "is_anomalous": True,
+            "anomaly_score": 0.95,
+            "anomaly_evidence": "synthetic BGP session drop for smoke validation",
+        }
+    )
     stage1 = backend.generate_json(
         role="7B-B",
         prompt_name="7b_b_stage1",
