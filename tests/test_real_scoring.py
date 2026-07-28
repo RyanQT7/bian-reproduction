@@ -63,6 +63,19 @@ class RealScoringTests(unittest.TestCase):
         self.assertEqual(result["classification"]["score_30"], 15)
         self.assertEqual(result["total_score_70"], 39)
 
+    def test_short_fw_role_node_id_is_valid(self):
+        truth = [self.truth(1)]
+        truth[0]["root_node"] = "region-7-fw"
+        prediction = self.prediction(1)
+        prediction["top5_root_causes"][0]["node_id"] = "region-7-fw"
+        result = score_predictions(
+            predictions=[prediction],
+            ground_truth=truth,
+            root_node_field="root_node",
+            expected_case_count=1,
+        )
+        self.assertEqual(result["localization"]["score_40"], 40)
+
     def test_missing_prediction_scores_zero(self):
         result = self.score([], [self.truth(1)], 1)
         self.assertEqual(result["total_score_70"], 0)

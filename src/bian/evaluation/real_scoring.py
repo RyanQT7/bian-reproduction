@@ -94,7 +94,7 @@ def score_predictions(
         if not all(isinstance(value, str) and value for value in (root_node, true_type, true_category)):
             raise ValidationError(f"{incident_id}: incomplete ground truth")
         parts = root_node.split("-")
-        if len(parts) < 4:
+        if len(parts) < 3 or parts[0] != "region" or not parts[1].isdigit():
             raise ValidationError(f"{incident_id}: invalid root node ID {root_node!r}")
         region_id = "-".join(parts[:2])
         role = "-".join(parts[2:])
