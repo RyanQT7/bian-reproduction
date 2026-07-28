@@ -4,6 +4,8 @@ import unittest
 from bian.data.real_preprocessing import (
     NumericAccumulator,
     assert_no_leakage,
+    count_csv_records,
+    node_id_for_row,
     parse_utc,
     phase_for,
     validate_experiment_incidents,
@@ -49,6 +51,24 @@ class RealPreprocessingTests(unittest.TestCase):
     def test_leakage_keys_rejected(self):
         with self.assertRaises(ValidationError):
             assert_no_leakage({"nested": {"fault_type": "secret"}}, {"fault_type"})
+
+    def test_candidate_role_mapping_excludes_monitor(self):
+        self.assertEqual(
+            node_id_for_row("node_metrics", {"node": "service-vm-2"}, "region-3"),
+            "region-3-service-2",
+        )
+        self.assertIsNone(
+            node_id_for_row("node_metrics", {"node": "monitor-vm"}, "region-3")
+        )
+
+    def test_count_csv_records(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "rows.csv"
+            path.write_text("a,b\n1,2\n3,4\n", encoding="utf-8")
+            self.assertEqual(count_csv_records(path), 2)
 
 
 if __name__ == "__main__":

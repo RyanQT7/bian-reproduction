@@ -210,14 +210,25 @@ class SourceAccumulator:
             if value:
                 self.dimensions.setdefault(name, set()).add(value)
 
-    def render(self) -> dict[str, Any]:
+    def render(
+        self, expected_metrics: Iterable[str] = (), max_dimension_values: int = 64
+    ) -> dict[str, Any]:
+        metric_names = sorted(set(expected_metrics) | set(self.metrics))
         return {
             "row_count": self.row_count,
             "first_timestamp_utc": self.first_timestamp,
             "last_timestamp_utc": self.last_timestamp,
-            "metrics": {key: self.metrics[key].render() for key in sorted(self.metrics)},
+            "metrics": {
+                key: self.metrics.get(key, NumericAccumulator()).render()
+                for key in metric_names
+            },
             "dimensions": {
-                key: sorted(values) for key, values in sorted(self.dimensions.items())
+                key: {
+                    "values": sorted(values)[:max_dimension_values],
+                    "unique_count": len(values),
+                    "truncated": len(values) > max_dimension_values,
+                }
+                for key, values in sorted(self.dimensions.items())
             },
         }
 
@@ -261,3 +272,325 @@ def dimensions_for(source: str, row: dict[str, str]) -> dict[str, str]:
             "severity": row.get("severity", ""),
         }
     return {}
+
+
+def count_csv_records(path: Path) -> int:
+    if path.stat().st_size == 0:
+        return 0
+    newline_count = 0
+    last_byte = b""
+    with path.open("rb") as handle:
+        while chunk := handle.read(8 * 1024 * 1024):
+            newline_count += chunk.count(b"\n")
+            last_byte = chunk[-1:]
+    line_count = newline_count + (1 if last_byte and last_byte != b"\n" else 0)
+    return max(0, line_count - 1)
+
+
+def _empty_phase(expected_metrics: Iterable[str]) -> dict[str, Any]:
+    return SourceAccumulator().render(expected_metrics)
+
+
+def preprocess_dataset(
+    *,
+    raw_root: Path,
+    bundle_root: Path,
+    output_root: Path,
+    config: dict[str, Any],
+) -> dict[str, Any]:
+    experiment_path = bundle_root / "experiment" / "incidents.jsonl"
+    topology_path = bundle_root / "topology" / "full_device_topology.json"
+    inventory_path = bundle_root / "topology" / "candidate_inventory.json"
+    taxonomy_path = bundle_root / "schemas" / "fault_taxonomy.json"
+    incidents = load_jsonl(experiment_path)
+    validate_experiment_incidents(incidents)
+    topology = json.loads(topology_path.read_text(encoding="utf-8"))
+    inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+    taxonomy = json.loads(taxonomy_path.read_text(encoding="utf-8"))
+    if len(inventory) != 72:
+        raise ValidationError(f"expected 72 candidate nodes, got {len(inventory)}")
+    candidate_ids = tuple(sorted(item["node_id"] for item in inventory))
+    if any(not item.get("candidate") for item in inventory):
+        raise ValidationError("candidate inventory contains a non-candidate node")
+    region_mapping = infer_region_mapping(raw_root, topology)
+    source_files: dict[str, str] = config["source_files"]
+    time_fields: dict[str, str] = config["time_fields"]
+    numeric_fields: dict[str, list[str]] = config["numeric_fields"]
+    applicability: dict[str, list[str]] = config["source_applicability"]
+    phases = tuple(config["aggregation"]["phases"])
+    max_dimension_values = int(config["aggregation"].get("max_dimension_values", 64))
+    forbidden_keys = {item.lower() for item in config["leakage_forbidden_keys"]}
+
+    accumulators: dict[
+        str, dict[str, dict[str, dict[str, SourceAccumulator]]]
+    ] = {incident["incident_id"]: {} for incident in incidents}
+    registry: dict[str, dict[str, set[str]]] = {
+        family: {source: set(fields) for source, fields in numeric_fields.items()}
+        for family in {"br", "cr", "fw", "traffic-vm", "service"}
+    }
+    source_stats: dict[str, dict[str, int]] = {
+        source: {
+            "input_files": 0,
+            "input_bytes": 0,
+            "input_rows": 0,
+            "selected_rows": 0,
+        }
+        for source in source_files
+    }
+    skipped_asset_rows = 0
+    parse_error_rows = 0
+
+    for region_dir, region_id in sorted(region_mapping.items(), key=lambda item: item[1]):
+        processed_dir = region_dir / "processed"
+        for source, pattern in source_files.items():
+            paths = sorted(processed_dir.glob(pattern))
+            if len(paths) != 1:
+                raise ValidationError(
+                    f"expected exactly one {source} file under {processed_dir}, got {len(paths)}"
+                )
+            path = paths[0]
+            stats = source_stats[source]
+            stats["input_files"] += 1
+            stats["input_bytes"] += path.stat().st_size
+            if path.stat().st_size == 0:
+                continue
+            with path.open(newline="", encoding="utf-8-sig", errors="replace") as handle:
+                reader = csv.DictReader(handle)
+                if not reader.fieldnames or time_fields[source] not in reader.fieldnames:
+                    raise ValidationError(f"{path} lacks configured time field")
+                for row in reader:
+                    stats["input_rows"] += 1
+                    timestamp_text = row.get(time_fields[source], "")
+                    if source == "frr_syslog_events" and not timestamp_text:
+                        timestamp_text = row.get("received_at", "")
+                    try:
+                        timestamp = parse_utc(timestamp_text)
+                    except ValidationError:
+                        parse_error_rows += 1
+                        continue
+                    node_id = node_id_for_row(source, row, region_id)
+                    if node_id is None:
+                        skipped_asset_rows += 1
+                        continue
+                    if node_id not in candidate_ids:
+                        raise ValidationError(f"mapped node is outside candidate inventory: {node_id}")
+                    role = node_id.split("-", 2)[2]
+                    family = ROLE_FAMILIES[role]
+                    if family not in applicability[source]:
+                        raise ValidationError(
+                            f"source {source} unexpectedly mapped to inapplicable role {role}"
+                        )
+                    row_numeric_fields = numeric_fields[source]
+                    numeric_row = row
+                    if source == "routing_metrics":
+                        metric_name = row.get("metric_name", "")
+                        if not metric_name:
+                            parse_error_rows += 1
+                            continue
+                        numeric_row = {metric_name: row.get("value", "")}
+                        row_numeric_fields = [metric_name]
+                        registry[family][source].add(metric_name)
+                    for incident in incidents:
+                        phase = phase_for(timestamp, incident)
+                        if phase is None:
+                            continue
+                        accumulator = (
+                            accumulators[incident["incident_id"]]
+                            .setdefault(node_id, {})
+                            .setdefault(source, {})
+                            .setdefault(phase, SourceAccumulator())
+                        )
+                        accumulator.add(
+                            numeric_row,
+                            timestamp,
+                            row_numeric_fields,
+                            dimensions_for(source, row),
+                        )
+                        stats["selected_rows"] += 1
+
+    excluded_stats: dict[str, dict[str, int | str]] = {}
+    for source, rule in config.get("excluded_sources", {}).items():
+        total_files = 0
+        total_bytes = 0
+        total_rows = 0
+        for region_dir in region_mapping:
+            paths = sorted((region_dir / "processed").glob(f"{source}.csv"))
+            if len(paths) != 1:
+                raise ValidationError(f"expected one excluded source file for {source}")
+            total_files += 1
+            total_bytes += paths[0].stat().st_size
+            total_rows += count_csv_records(paths[0])
+        excluded_stats[source] = {
+            "action": rule["action"],
+            "reason": rule["reason"],
+            "input_files": total_files,
+            "input_bytes": total_bytes,
+            "input_rows": total_rows,
+            "output_bytes": 0,
+            "output_rows": 0,
+        }
+
+    output_root.mkdir(parents=True, exist_ok=False)
+    schema_root = output_root / "schema_registry"
+    schema_root.mkdir()
+    for family in sorted(registry):
+        rendered_registry = {
+            "device_family": family,
+            "sources": {
+                source: {
+                    "applicable": family in applicability[source],
+                    "metric_fields": sorted(registry[family][source]),
+                    "phases": list(phases),
+                }
+                for source in sorted(source_files)
+            },
+        }
+        (schema_root / f"{family.replace('-', '_')}.json").write_text(
+            json.dumps(rendered_registry, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    coverage_failures: list[dict[str, str]] = []
+    incident_summaries = []
+    periodic_sources = set(config["periodic_sources"])
+    for incident in incidents:
+        incident_id = incident["incident_id"]
+        incident_dir = output_root / incident_id
+        incident_dir.mkdir()
+        devices = []
+        for item in sorted(inventory, key=lambda candidate: candidate["node_id"]):
+            node_id = item["node_id"]
+            role = item["role"]
+            family = ROLE_FAMILIES[role]
+            sources = {}
+            for source in sorted(source_files):
+                applicable = family in applicability[source]
+                phase_records = {}
+                total_rows = 0
+                for phase in phases:
+                    accumulator = (
+                        accumulators[incident_id]
+                        .get(node_id, {})
+                        .get(source, {})
+                        .get(phase)
+                    )
+                    rendered = (
+                        accumulator.render(
+                            registry[family][source], max_dimension_values
+                        )
+                        if accumulator
+                        else _empty_phase(registry[family][source])
+                    )
+                    phase_records[phase] = rendered
+                    total_rows += rendered["row_count"]
+                if not applicable:
+                    status = "unavailable_by_role"
+                elif total_rows == 0:
+                    status = "empty"
+                else:
+                    status = "available"
+                if applicable and source in periodic_sources:
+                    missing_phases = [
+                        phase for phase in phases if phase_records[phase]["row_count"] == 0
+                    ]
+                    if missing_phases:
+                        coverage_failures.append(
+                            {
+                                "incident_id": incident_id,
+                                "node_id": node_id,
+                                "source": source,
+                                "missing_phases": ",".join(missing_phases),
+                            }
+                        )
+                sources[source] = {
+                    "status": status,
+                    "applicable": applicable,
+                    "phases": phase_records,
+                }
+            devices.append(
+                {
+                    "node_id": node_id,
+                    "region_index": item["region_index"],
+                    "region_id": item["region_id"],
+                    "role": role,
+                    "device_family": family,
+                    "candidate": True,
+                    "sources": sources,
+                }
+            )
+        model_input = {
+            "incident_id": incident_id,
+            "dataset_id": incident["dataset_id"],
+            "dataset_timezone": "UTC",
+            "fault_start_time_utc": incident["fault_start_time_utc"],
+            "fault_end_time_utc": incident["fault_end_time_utc"],
+            "slice_start_time_utc": incident["slice_start_time_utc"],
+            "slice_end_time_utc": incident["slice_end_time_utc"],
+            "candidate_scope": "global_72_nodes",
+            "candidate_node_ids": list(candidate_ids),
+            "topology": {
+                "directed": topology["directed"],
+                "nodes": [
+                    {
+                        "node_id": node["node_id"],
+                        "region_id": node["region_id"],
+                        "region_index": node["region_index"],
+                        "role": node["role"],
+                        "candidate": node["candidate"],
+                    }
+                    for node in topology["nodes"]
+                ],
+                "edges": [
+                    {
+                        "source": edge["source"],
+                        "target": edge["target"],
+                        "edge_type": edge["edge_type"],
+                        "protocol": edge["protocol"],
+                    }
+                    for edge in topology["edges"]
+                ],
+            },
+            "fault_taxonomy": taxonomy,
+            "devices": devices,
+        }
+        assert_no_leakage(
+            {key: value for key, value in model_input.items() if key != "fault_taxonomy"},
+            forbidden_keys,
+        )
+        path = incident_dir / "incident_input.json"
+        path.write_text(
+            json.dumps(model_input, ensure_ascii=False, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+        incident_summaries.append(
+            {
+                "incident_id": incident_id,
+                "candidate_count": len(candidate_ids),
+                "device_count": len(devices),
+                "output_bytes": path.stat().st_size,
+            }
+        )
+
+    audit = {
+        "status": "failed_coverage" if coverage_failures else "success",
+        "evaluated_cases": len(incidents),
+        "candidate_count": len(candidate_ids),
+        "topology_node_count": len(topology["nodes"]),
+        "topology_edge_count": len(topology["edges"]),
+        "source_stats": source_stats,
+        "excluded_source_stats": excluded_stats,
+        "skipped_non_candidate_asset_rows": skipped_asset_rows,
+        "timestamp_parse_error_rows": parse_error_rows,
+        "coverage_failure_count": len(coverage_failures),
+        "coverage_failures": coverage_failures,
+        "incidents": incident_summaries,
+    }
+    assert_no_leakage(audit, forbidden_keys)
+    (output_root / "preprocessing_audit.json").write_text(
+        json.dumps(audit, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    if coverage_failures and config.get("reject_incomplete_periodic_coverage", True):
+        raise ValidationError(
+            f"{len(coverage_failures)} periodic source/device/phase coverage failures"
+        )
+    return audit

@@ -72,7 +72,8 @@
     "phases": ["pre_fault", "fault", "post_fault"],
     "numeric_statistics": ["count", "min", "max", "mean", "first", "last", "delta"],
     "sort_keys": ["timestamp_utc", "source_type", "node_id"],
-    "missing_value_strategy": "ignore_numeric_value_and_report_missing_count"
+    "missing_value_strategy": "ignore_numeric_value_and_report_missing_count",
+    "max_dimension_values": 64
   },
   "candidate_roles": [
     "br-1", "br-2", "cr-1", "cr-2", "fw", "traffic-vm",
