@@ -4,7 +4,8 @@ This is a pipeline validation, not a paper-equivalent model run.
 Use the supplied candidate evidence, topology, timeline, and taxonomy to rank root causes
 and classify the fault. Never output a node or fault type outside the supplied lists.
 Return ONLY strict JSON, with no markdown or prose:
-{"root_causes":[{"node_id":"allowed candidate","score":0.0,"reason":"short evidence-based reason"}],"fault_types":[{"fault_type":"allowed type","fault_category":"matching category","confidence":0.0,"reason":"short evidence-based reason"}],"analysis":"short topology/time synthesis"}
+{"root_causes":[{"node_id":"allowed candidate","score":0.0}],"fault_types":[{"fault_type":"allowed type","confidence":0.0}]}
 Return at least 5 distinct root causes and at least 3 distinct fault types, ordered best first.
 All scores/confidences must be finite and non-negative.
-
+Root-cause items MUST contain exactly node_id and score. Fault-type items MUST contain
+exactly fault_type and confidence. Do not output reason, category, analysis, or extra keys.

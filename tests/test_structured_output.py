@@ -90,19 +90,16 @@ class StructuredOutputTests(unittest.TestCase):
         )
         value = {
             "root_causes": [
-                {"node_id": node, "score": 1 / (i + 1), "reason": "e"}
+                {"node_id": node, "score": 1 / (i + 1)}
                 for i, node in enumerate(nodes)
             ],
             "fault_types": [
                 {
                     "fault_type": item["fault_type"],
-                    "fault_category": item["fault_category"],
                     "confidence": 0.2,
-                    "reason": "e",
                 }
                 for item in taxonomy
             ],
-            "analysis": "test",
         }
         self.assertEqual(len(validate_stage2(value, nodes, taxonomy)["root_causes"]), 5)
         value["root_causes"][0]["node_id"] = "region-1-sw-core"

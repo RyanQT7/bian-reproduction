@@ -123,7 +123,7 @@ def validate_stage2(
     allowed_nodes: tuple[str, ...],
     taxonomy: tuple[dict[str, str], ...],
 ) -> dict[str, Any]:
-    _require_exact_keys(value, {"root_causes", "fault_types", "analysis"}, "$")
+    _require_exact_keys(value, {"root_causes", "fault_types"}, "$")
     roots = value["root_causes"]
     faults = value["fault_types"]
     if not isinstance(roots, list) or len(roots) < 5:
@@ -133,16 +133,20 @@ def validate_stage2(
     for index, item in enumerate(roots):
         if not isinstance(item, dict):
             raise ValidationError(f"root_causes[{index}] must be an object")
-        _require_exact_keys(item, {"node_id", "score", "reason"}, f"root_causes[{index}]")
+        _require_exact_keys(item, {"node_id", "score"}, f"root_causes[{index}]")
         node, score = item["node_id"], item["score"]
         if node not in allowed_nodes or node in root_nodes:
             raise ValidationError(f"illegal or duplicate root node {node!r}")
         if not isinstance(score, (int, float)) or not math.isfinite(score) or score < 0:
             raise ValidationError(f"{node}: root score must be finite and non-negative")
-        if not isinstance(item["reason"], str):
-            raise ValidationError(f"{node}: root reason must be a string")
         root_nodes.add(node)
-        clean_roots.append({**item, "score": float(score)})
+        clean_roots.append(
+            {
+                **item,
+                "score": float(score),
+                "reason": "7B-B Stage 2 topology/time ranking",
+            }
+        )
     taxonomy_map = {item["fault_type"]: item["fault_category"] for item in taxonomy}
     if not isinstance(faults, list) or len(faults) < 3:
         raise ValidationError("fault_types must contain at least three items")
@@ -152,14 +156,12 @@ def validate_stage2(
         if not isinstance(item, dict):
             raise ValidationError(f"fault_types[{index}] must be an object")
         _require_exact_keys(
-            item, {"fault_type", "fault_category", "confidence", "reason"},
+            item, {"fault_type", "confidence"},
             f"fault_types[{index}]",
         )
         fault_type = item["fault_type"]
         if fault_type not in taxonomy_map or fault_type in fault_names:
             raise ValidationError(f"illegal or duplicate fault type {fault_type!r}")
-        if item["fault_category"] != taxonomy_map[fault_type]:
-            raise ValidationError(f"category mismatch for {fault_type!r}")
         confidence = item["confidence"]
         if (
             not isinstance(confidence, (int, float))
@@ -167,16 +169,19 @@ def validate_stage2(
             or confidence < 0
         ):
             raise ValidationError(f"{fault_type}: confidence must be finite and non-negative")
-        if not isinstance(item["reason"], str):
-            raise ValidationError(f"{fault_type}: reason must be a string")
         fault_names.add(fault_type)
-        clean_faults.append({**item, "confidence": float(confidence)})
-    if not isinstance(value["analysis"], str):
-        raise ValidationError("analysis must be a string")
+        clean_faults.append(
+            {
+                **item,
+                "fault_category": taxonomy_map[fault_type],
+                "confidence": float(confidence),
+                "reason": "7B-B Stage 2 classification ranking",
+            }
+        )
     return {
         "root_causes": clean_roots,
         "fault_types": clean_faults,
-        "analysis": value["analysis"],
+        "analysis": "Structured ranking using supplied evidence, topology, and timeline",
     }
 
 
