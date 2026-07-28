@@ -177,8 +177,15 @@ def score_classification(
         )
         by_type[fault_type] = (item, taxonomy)
     if not any(raw.values()):
-        raise ValidationError("classification produced no positive score")
-    normalized = normalize_scores(raw)
+        # Preserve the model's comparative compatibility signal when every
+        # candidate receives an equally overwhelming counter-evidence penalty.
+        raw = {
+            fault_type: sum(item[name] for name in CLASS_COMPONENTS[:-1]) / 5
+            for fault_type, (item, _taxonomy) in by_type.items()
+        }
+    normalized = normalize_scores(raw) if any(raw.values()) else {
+        fault_type: 0.0 for fault_type in raw
+    }
     ranked = sorted(raw, key=lambda key: (-raw[key], key))
     return [
         {

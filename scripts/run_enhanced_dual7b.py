@@ -178,25 +178,32 @@ def main() -> int:
                 compact_candidate(item, evidence_by_node[item["node_id"]])
                 for item in shortlist
             ]
-            stage2 = backend.generate_json(
-                role="7B-B",
-                prompt_name="7b_b_enhanced_stage2",
-                prompt_version="engineering-stage2-v2",
-                payload={
-                    "incident_window": {
-                        "start": incident["fault_start_time_utc"],
-                        "end": incident["fault_end_time_utc"],
+            stage2_items = []
+            for offset in range(0, len(candidates), 5):
+                chunk = candidates[offset : offset + 5]
+                chunk_aliases = {item["candidate_id"] for item in chunk}
+                part = backend.generate_json(
+                    role="7B-B",
+                    prompt_name="7b_b_enhanced_stage2",
+                    prompt_version="engineering-stage2-v2",
+                    payload={
+                        "incident_window": {
+                            "start": incident["fault_start_time_utc"],
+                            "end": incident["fault_end_time_utc"],
+                        },
+                        "candidate_map_policy": "Cxx aliases only; node IDs hidden",
+                        "topology": compact_topology(
+                            incident["topology"], alias_to_node
+                        ),
+                        "candidates": chunk,
                     },
-                    "candidate_map_policy": "Cxx aliases only; node IDs hidden",
-                    "topology": compact_topology(incident["topology"], alias_to_node),
-                    "candidates": candidates,
-                },
-                validator=lambda value, aliases=set(alias_to_node): validate_stage2(
-                    value, aliases
-                ),
-            )
+                    validator=lambda value, aliases=chunk_aliases: validate_stage2(
+                        value, aliases
+                    ),
+                )
+                stage2_items.extend(part["candidates"])
             top5, rank_data = score_stage2(
-                stage2["candidates"],
+                stage2_items,
                 alias_to_node,
                 config["stage2"]["weights"],
             )
@@ -204,7 +211,7 @@ def main() -> int:
                 {
                     "incident_id": incident_id,
                     "candidate_map": alias_to_node,
-                    "model_components": stage2["candidates"],
+                    "model_components": stage2_items,
                     "rank_of_ranks": rank_data,
                 }
             )
