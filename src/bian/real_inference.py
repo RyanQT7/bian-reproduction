@@ -278,6 +278,11 @@ def aggregate_stage2_rounds(
         )
         for fault in final_faults
     }
+    if sum(confidence_raw.values()) <= 0:
+        confidence_raw = {
+            fault: 1.0 / (fault_rank_sums[fault] / len(rounds))
+            for fault in final_faults
+        }
     confidences = normalize_scores(confidence_raw)
     top3 = [
         {

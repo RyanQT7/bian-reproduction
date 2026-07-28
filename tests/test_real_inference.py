@@ -66,6 +66,13 @@ class RealInferenceTests(unittest.TestCase):
         self.assertAlmostEqual(sum(item["failure_score"] for item in top5), 1.0)
         self.assertEqual(len(top3), 3)
         self.assertEqual(len(rankings), 3)
+        zero_faults = [{**item, "confidence": 0} for item in faults]
+        _, zero_top3, _ = aggregate_stage2_rounds(
+            [{"root_causes": roots, "fault_types": zero_faults, "analysis": "a"}] * 3,
+            candidates,
+            taxonomy,
+        )
+        self.assertAlmostEqual(sum(item["confidence"] for item in zero_top3), 1.0)
 
 
 if __name__ == "__main__":
