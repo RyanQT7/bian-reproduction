@@ -5,4 +5,6 @@ Jointly compare every candidate from the supplied 7B-A device analyses.
 Return ONLY strict JSON, with no markdown or prose:
 {"scores":[{"node_id":"exact candidate","score":0.0,"reason":"short evidence-based reason"}],"reason_summary":"short joint assessment"}
 Include exactly every candidate once. Scores must be finite, non-negative, and at least one positive.
+At least one score MUST be strictly greater than zero; if evidence is weak, use small
+positive relative-likelihood scores instead of returning all zeros.
 Keep every reason at most 8 words.

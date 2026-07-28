@@ -69,7 +69,20 @@ def smoke_structured(backend: Dual7BBackend) -> dict:
                             "missing_phases": ["post_fault"] if status == "partial" else [],
                         }
                     },
-                    "top_changed_signals": [],
+                    "top_changed_signals": (
+                        [
+                            {
+                                "source": "routing_metrics",
+                                "metric": "bgp_session_up",
+                                "pre_mean": 1.0,
+                                "fault_mean": 0.0,
+                                "post_mean": 1.0,
+                                "relative_change": 1.0,
+                            }
+                        ]
+                        if node == nodes[0]
+                        else []
+                    ),
                 }
                 for node, status in zip(
                     nodes, ("available", "partial", "empty", "missing", "collection_failed")
