@@ -15,19 +15,52 @@ def rank_stage1(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     by_node = {item["node_id"]: item for item in model_analyses}
     weights = config["weights"]
+    region_symptoms: dict[str, list[float]] = {}
+    for item in evidence:
+        if item["device_role"] in {"service", "traffic-vm"}:
+            region = "-".join(item["node_id"].split("-")[:2])
+            region_symptoms.setdefault(region, []).append(
+                item["feature_summary"]["temporal_change_score"]
+            )
     records = []
     for item in evidence:
         node = item["node_id"]
         summary = item["feature_summary"]
         model = by_node[node]
         model_score = float(model["anomaly_score"])
+        effective_direct_values = []
+        for evidence_item in item["evidence"]:
+            if not evidence_item["direct_fault_evidence"]:
+                continue
+            if item["device_role"] == "fw" and "cpu" in evidence_item["metric_name"].lower():
+                if not (
+                    evidence_item["fault_value"] >= 80
+                    or evidence_item["absolute_delta"] >= 30
+                ):
+                    continue
+            effective_direct_values.append(evidence_item["stable_change_score"])
+        effective_direct = max(effective_direct_values, default=0.0)
+        temporal = summary["temporal_change_score"]
+        deterministic = (
+            min(1.0, 0.65 * effective_direct + 0.35 * temporal)
+            if item["device_role"] in {"br", "cr", "fw"}
+            else summary["deterministic_feature_score"]
+        )
+        region = "-".join(node.split("-")[:2])
+        downstream_region = (
+            max(region_symptoms.get(region, [0.0]))
+            if item["device_role"] in {"br", "cr", "fw"}
+            else 0.0
+        )
         raw = (
             weights["deterministic_feature_score"]
-            * summary["deterministic_feature_score"]
+            * deterministic
             + weights["model_anomaly_score"] * model_score
             + weights["temporal_change_score"] * summary["temporal_change_score"]
             + weights["direct_fault_evidence_score"]
-            * summary["direct_fault_evidence_score"]
+            * effective_direct
+            + weights.get("downstream_region_symptom_score", 0.0)
+            * downstream_region
             + weights["data_quality_adjustment"]
             * summary["data_quality_adjustment"]
             - weights["symptom_likelihood_penalty"]
@@ -50,12 +83,11 @@ def rank_stage1(
                 "candidate_id": None,
                 "node_id": node,
                 "device_role": item["device_role"],
-                "deterministic_feature_score": summary["deterministic_feature_score"],
+                "deterministic_feature_score": deterministic,
                 "model_anomaly_score": model_score,
                 "temporal_change_score": summary["temporal_change_score"],
-                "direct_fault_evidence_score": summary[
-                    "direct_fault_evidence_score"
-                ],
+                "direct_fault_evidence_score": effective_direct,
+                "downstream_region_symptom_score": downstream_region,
                 "symptom_likelihood": summary["symptom_likelihood"],
                 "data_quality_adjustment": summary["data_quality_adjustment"],
                 "earliest_change_time": summary["earliest_change_time"],

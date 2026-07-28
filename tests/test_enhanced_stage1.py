@@ -33,6 +33,7 @@ class EnhancedStage1Tests(unittest.TestCase):
                 "model_anomaly_score": 0.1,
                 "temporal_change_score": 0.15,
                 "direct_fault_evidence_score": 0.35,
+                "downstream_region_symptom_score": 0.2,
                 "data_quality_adjustment": 1.0,
                 "symptom_likelihood_penalty": 0.2,
             },
