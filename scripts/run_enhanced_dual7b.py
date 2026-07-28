@@ -60,7 +60,7 @@ def compact_candidate(item: dict, evidence: dict) -> dict:
     by_id = {entry["evidence_id"]: entry for entry in evidence["evidence"]}
     evidence_items = [
         by_id[evidence_id]
-        for evidence_id in item["supporting_evidence_ids"][:5]
+        for evidence_id in item["supporting_evidence_ids"][:2]
         if evidence_id in by_id
     ]
     return {
@@ -83,18 +83,10 @@ def compact_candidate(item: dict, evidence: dict) -> dict:
             {
                 key: entry[key]
                 for key in (
-                    "evidence_id",
-                    "metric_name",
-                    "source_type",
-                    "observed_at",
-                    "first_change_time",
-                    "pre_value",
-                    "fault_value",
-                    "post_value",
-                    "stable_change_score",
-                    "direction",
-                    "status_transition",
-                    "data_quality_status",
+                    "evidence_id", "metric_name", "source_type",
+                    "first_change_time", "pre_value", "fault_value",
+                    "post_value", "stable_change_score", "direction",
+                    "status_transition", "data_quality_status",
                     "direct_fault_evidence",
                 )
             }
@@ -103,27 +95,25 @@ def compact_candidate(item: dict, evidence: dict) -> dict:
     }
 
 
-def compact_topology(topology: dict, candidate_nodes: set[str]) -> dict:
+def compact_topology(topology: dict, alias_to_node: dict[str, str]) -> dict:
+    node_to_alias = {node: alias for alias, node in alias_to_node.items()}
+    candidate_nodes = set(node_to_alias)
     edges = [
         edge
         for edge in topology["edges"]
-        if edge["source"] in candidate_nodes or edge["target"] in candidate_nodes
+        if edge["source"] in candidate_nodes and edge["target"] in candidate_nodes
     ]
-    involved = candidate_nodes | {
-        endpoint for edge in edges for endpoint in (edge["source"], edge["target"])
-    }
     return {
         "directed": topology["directed"],
-        "nodes": [
+        "nodes": sorted(alias_to_node),
+        "edges": [
             {
-                "node_id": node["node_id"],
-                "role": node.get("role"),
-                "candidate": node.get("candidate"),
+                "source": node_to_alias[edge["source"]],
+                "target": node_to_alias[edge["target"]],
+                "relation": edge.get("relation", edge.get("type", "connected")),
             }
-            for node in topology["nodes"]
-            if node["node_id"] in involved
+            for edge in edges
         ],
-        "edges": edges,
     }
 
 
@@ -159,7 +149,7 @@ def main() -> int:
     backend = Dual7BBackend(
         args.model_path,
         config=GenerationConfig(
-            max_input_tokens=4096,
+            max_input_tokens=8192,
             max_new_tokens=2048,
             temperature=0.0,
             retries=2,
@@ -198,9 +188,7 @@ def main() -> int:
                         "end": incident["fault_end_time_utc"],
                     },
                     "candidate_map_policy": "Cxx aliases only; node IDs hidden",
-                    "topology": compact_topology(
-                        incident["topology"], set(alias_to_node.values())
-                    ),
+                    "topology": compact_topology(incident["topology"], alias_to_node),
                     "candidates": candidates,
                 },
                 validator=lambda value, aliases=set(alias_to_node): validate_stage2(
