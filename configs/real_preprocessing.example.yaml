@@ -1,0 +1,87 @@
+{
+  "_provenance": "implementation-choice",
+  "dataset_timezone": "UTC",
+  "include_window_start": true,
+  "include_window_end": true,
+  "reject_incomplete_periodic_coverage": true,
+  "periodic_sources": [
+    "interface_metrics",
+    "node_metrics",
+    "routing_metrics",
+    "scrape_health"
+  ],
+  "excluded_sources": {
+    "netflow_5tuple_minute_readable": {
+      "action": "exclude",
+      "reason": "high-volume raw five-tuple records are not required by the BiAn method input"
+    }
+  },
+  "source_files": {
+    "interface_metrics": "interface_metrics_*.csv",
+    "node_metrics": "node_metrics_*.csv",
+    "routing_metrics": "routing_metrics_*.csv",
+    "scrape_health": "scrape_health_*.csv",
+    "traffic_flow_metrics": "traffic_flow_metrics.csv",
+    "frr_syslog_events": "frr_syslog_events_*.csv"
+  },
+  "time_fields": {
+    "interface_metrics": "timestamp",
+    "node_metrics": "timestamp",
+    "routing_metrics": "timestamp",
+    "scrape_health": "timestamp",
+    "traffic_flow_metrics": "timestamp_utc",
+    "frr_syslog_events": "event_time"
+  },
+  "numeric_fields": {
+    "interface_metrics": [
+      "rx_bytes_rate", "tx_bytes_rate", "rx_packets_rate", "tx_packets_rate",
+      "rx_drop_rate", "tx_drop_rate", "rx_error_rate", "tx_error_rate",
+      "carrier_changes"
+    ],
+    "node_metrics": [
+      "cpu_usage", "load1", "load5", "memory_available_ratio",
+      "swap_used_ratio", "disk_read_rate", "disk_write_rate", "disk_io_util",
+      "filesystem_used_ratio", "inode_used_ratio", "open_fd_ratio",
+      "process_count"
+    ],
+    "routing_metrics": ["value"],
+    "scrape_health": [
+      "scrape_up", "scrape_duration_seconds", "scrape_samples"
+    ],
+    "traffic_flow_metrics": [
+      "dns_flow_observed_qps", "dns_flow_latency_mean_seconds",
+      "dns_flow_latency_p95_seconds", "web_flow_observed_qps",
+      "web_flow_latency_mean_seconds", "web_flow_latency_p95_seconds",
+      "auth_flow_observed_qps", "auth_flow_latency_mean_seconds",
+      "auth_flow_latency_p95_seconds", "elephant_flow_observed_qps",
+      "elephant_flow_latency_mean_seconds", "elephant_flow_latency_p95_seconds",
+      "elephant_flow_throughput_bps", "elephant_flow_retransmits_total",
+      "elephant_flow_loss_rate", "elephant_flow_jitter_seconds"
+    ],
+    "frr_syslog_events": ["severity_code"]
+  },
+  "source_applicability": {
+    "interface_metrics": ["br", "cr", "fw", "traffic-vm", "service"],
+    "node_metrics": ["br", "cr", "fw", "traffic-vm", "service"],
+    "routing_metrics": ["br", "cr"],
+    "scrape_health": ["br", "cr", "fw", "traffic-vm", "service"],
+    "traffic_flow_metrics": ["traffic-vm"],
+    "frr_syslog_events": ["br", "cr"]
+  },
+  "aggregation": {
+    "phases": ["pre_fault", "fault", "post_fault"],
+    "numeric_statistics": ["count", "min", "max", "mean", "first", "last", "delta"],
+    "sort_keys": ["timestamp_utc", "source_type", "node_id"],
+    "missing_value_strategy": "ignore_numeric_value_and_report_missing_count"
+  },
+  "candidate_roles": [
+    "br-1", "br-2", "cr-1", "cr-2", "fw", "traffic-vm",
+    "service-1", "service-2", "service-3"
+  ],
+  "excluded_asset_roles": ["probe-vm", "monitor-vm"],
+  "leakage_forbidden_keys": [
+    "root_cause", "root_region", "root_node", "fault_type", "fault_category",
+    "fault_domain", "fault_id", "injection", "injection_script",
+    "injection_parameters", "expected_symptoms"
+  ]
+}
