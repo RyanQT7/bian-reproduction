@@ -93,35 +93,25 @@ def validate_device_analysis(
 def validate_stage1(
     value: dict[str, Any], expected_nodes: tuple[str, ...]
 ) -> dict[str, Any]:
-    _require_exact_keys(value, {"scores", "reason_summary"}, "$")
+    _require_exact_keys(value, {"scores"}, "$")
     if not isinstance(value["scores"], list):
         raise ValidationError("scores must be a list")
     raw: dict[str, float] = {}
-    reasons: dict[str, str] = {}
     for index, item in enumerate(value["scores"]):
         if not isinstance(item, dict):
             raise ValidationError(f"scores[{index}] must be an object")
-        _require_exact_keys(item, {"node_id", "score", "reason"}, f"scores[{index}]")
+        _require_exact_keys(item, {"node_id", "score"}, f"scores[{index}]")
         node = item["node_id"]
         score = item["score"]
         if node not in expected_nodes or node in raw:
             raise ValidationError(f"illegal or duplicate Stage 1 node {node!r}")
         if not isinstance(score, (int, float)) or not math.isfinite(score) or score < 0:
             raise ValidationError(f"{node}: Stage 1 score must be finite and non-negative")
-        if not isinstance(item["reason"], str):
-            raise ValidationError(f"{node}: Stage 1 reason must be a string")
         raw[node] = float(score)
-        reasons[node] = item["reason"]
     if set(raw) != set(expected_nodes):
         raise ValidationError("Stage 1 scores must cover exactly all candidates")
-    if not isinstance(value["reason_summary"], str):
-        raise ValidationError("reason_summary must be a string")
     normalized = normalize_scores(raw)
-    return {
-        "scores": normalized,
-        "reasons": reasons,
-        "reason_summary": value["reason_summary"],
-    }
+    return {"scores": normalized}
 
 
 def validate_stage2(
@@ -187,4 +177,3 @@ def validate_stage2(
 
 
 Validator = Callable[[dict[str, Any]], dict[str, Any]]
-

@@ -198,6 +198,12 @@ def run_incident(
         )
         stage1_parts.append(result)
     stage1 = merge_stage1(stage1_parts)
+    stage1["reasons"] = {
+        node: analysis_by_node[node]["anomaly_evidence"] for node in candidates
+    }
+    stage1["reason_summary"] = (
+        "7B-B relative likelihood scores; reasons reference validated 7B-A evidence"
+    )
     entropy = score_entropy(stage1["scores"], candidates, config["entropy_mode"])
     early_stop = should_early_stop(
         stage1["scores"],

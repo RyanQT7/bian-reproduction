@@ -224,17 +224,9 @@ def build_metric_timeline(
 
 def merge_stage1(parts: list[dict[str, Any]]) -> dict[str, Any]:
     raw = {}
-    reasons = {}
-    summaries = []
     for part in parts:
         raw.update(part["scores"])
-        reasons.update(part["reasons"])
-        summaries.append(part["reason_summary"])
-    return {
-        "scores": normalize_scores(raw),
-        "reasons": reasons,
-        "reason_summary": " | ".join(summaries),
-    }
+    return {"scores": normalize_scores(raw)}
 
 
 def aggregate_stage2_rounds(

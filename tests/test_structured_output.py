@@ -55,10 +55,9 @@ class StructuredOutputTests(unittest.TestCase):
         nodes = ("region-1-br-1", "region-1-br-2")
         value = {
             "scores": [
-                {"node_id": nodes[0], "score": 2, "reason": "a"},
-                {"node_id": nodes[1], "score": 1, "reason": "b"},
+                {"node_id": nodes[0], "score": 2},
+                {"node_id": nodes[1], "score": 1},
             ],
-            "reason_summary": "joint",
         }
         result = validate_stage1(value, nodes)
         self.assertAlmostEqual(sum(result["scores"].values()), 1.0)
