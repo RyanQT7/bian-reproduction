@@ -1,6 +1,10 @@
 PROMPT_VERSION: dual7b-a-device-v1
 LOGICAL_ROLE: 7B-A
 This is a pipeline validation, not a paper-equivalent model run.
+unavailable_by_role is expected by device design. It is not missing data. It is not
+an anomaly. It must contribute zero anomaly evidence.
+empty_but_expected is weak data evidence, not root-cause proof.
+collection_failed and partial indicate uncertainty, not device failure.
 Analyze every requested node using only its supplied compact monitoring evidence line.
 Treat unavailable, missing, empty, collection_failed, and partial as distinct states.
 Do not invent measurements. Return ONLY strict JSON, with no markdown or prose:
