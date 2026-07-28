@@ -11,9 +11,9 @@
   "entropy_threshold": 0.75,
   "stage2_top_p": 0.85,
   "stage2_max_candidates": 15,
-  "device_batch_size": 4,
+  "device_batch_size": 2,
   "stage1_batch_size": 12,
-  "max_signals_per_device": 8,
+  "max_signals_per_device": 4,
   "max_timeline_events": 40,
   "generation": {
     "max_input_tokens": 8192,
