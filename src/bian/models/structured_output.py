@@ -126,8 +126,8 @@ def validate_stage2(
     _require_exact_keys(value, {"root_causes", "fault_types"}, "$")
     roots = value["root_causes"]
     faults = value["fault_types"]
-    if not isinstance(roots, list) or len(roots) < 5:
-        raise ValidationError("root_causes must contain at least five items")
+    if not isinstance(roots, list) or len(roots) < 1:
+        raise ValidationError("root_causes must contain at least one item")
     root_nodes: set[str] = set()
     clean_roots = []
     for index, item in enumerate(roots):

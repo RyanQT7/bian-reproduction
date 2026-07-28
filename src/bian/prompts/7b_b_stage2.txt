@@ -5,7 +5,9 @@ Use the supplied candidate evidence, topology, timeline, and taxonomy to rank ro
 and classify the fault. Never output a node or fault type outside the supplied lists.
 Return ONLY strict JSON, with no markdown or prose:
 {"root_causes":[{"node_id":"allowed candidate","score":0.0}],"fault_types":[{"fault_type":"allowed type","confidence":0.0}]}
-Return at least 5 distinct root causes and at least 3 distinct fault types, ordered best first.
+Return preferably 5 or more distinct root causes (never fewer than 1) and at least
+3 distinct fault types, ordered best first. Unlisted allowed candidates are treated
+as lower-ranked than every listed candidate by Rank of Ranks.
 All scores/confidences must be finite and non-negative.
 Root-cause items MUST contain exactly node_id and score. Fault-type items MUST contain
 exactly fault_type and confidence. Do not output reason, category, analysis, or extra keys.
