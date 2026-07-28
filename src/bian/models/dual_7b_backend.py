@@ -9,7 +9,7 @@ import time
 from typing import Any, Callable
 
 from bian.data.validators import ValidationError
-from bian.models.structured_output import parse_strict_json
+from bian.models.structured_output import parse_strict_json, strip_thinking
 
 
 @dataclass(frozen=True)
@@ -33,6 +33,7 @@ class ModelCall:
     peak_gpu_memory_mib: float
     raw_output: str
     thinking: str
+    json_repair_used: bool
     error: str | None
 
 
@@ -145,9 +146,23 @@ class Dual7BBackend:
             new_ids = outputs[0, input_tokens:]
             raw = self._tokenizer.decode(new_ids, skip_special_tokens=True).strip()
             thinking = ""
+            repair_used = False
             error = None
             try:
-                parsed, thinking = parse_strict_json(raw)
+                try:
+                    parsed, thinking = parse_strict_json(raw)
+                except ValidationError:
+                    import json_repair
+
+                    thinking, answer = strip_thinking(raw)
+                    if answer.startswith("```json") and answer.endswith("```"):
+                        answer = answer[len("```json") : -len("```")].strip()
+                    elif answer.startswith("```") and answer.endswith("```"):
+                        answer = answer[len("```") : -len("```")].strip()
+                    parsed = json_repair.loads(answer)
+                    if not isinstance(parsed, dict):
+                        raise ValidationError("repaired model answer must be an object")
+                    repair_used = True
                 validated = validator(parsed)
             except (ValidationError, ValueError, TypeError) as exc:
                 error = f"{type(exc).__name__}: {exc}"
@@ -163,6 +178,7 @@ class Dual7BBackend:
                     peak_gpu_memory_mib=torch.cuda.max_memory_allocated(0) / 1024**2,
                     raw_output=raw,
                     thinking=thinking,
+                    json_repair_used=repair_used,
                     error=error,
                 )
             )

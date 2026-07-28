@@ -25,6 +25,12 @@ class StructuredOutputTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             parse_strict_json('answer: {"ok":true}')
 
+    def test_json_repair_dependency_handles_missing_comma_then_schema_applies(self):
+        import json_repair
+
+        repaired = json_repair.loads('{"node":"a" "score":1}')
+        self.assertEqual(repaired, {"node": "a", "score": 1})
+
     def test_device_analysis_handles_partial_and_empty_as_text(self):
         nodes = ("region-1-br-1", "region-1-br-2")
         value = {
