@@ -181,27 +181,68 @@ def main() -> int:
             stage2_items = []
             for offset in range(0, len(candidates), 5):
                 chunk = candidates[offset : offset + 5]
-                chunk_aliases = {item["candidate_id"] for item in chunk}
-                part = backend.generate_json(
-                    role="7B-B",
-                    prompt_name="7b_b_enhanced_stage2",
-                    prompt_version="engineering-stage2-v2",
-                    payload={
-                        "incident_window": {
-                            "start": incident["fault_start_time_utc"],
-                            "end": incident["fault_end_time_utc"],
-                        },
-                        "candidate_map_policy": "Cxx aliases only; node IDs hidden",
-                        "topology": compact_topology(
-                            incident["topology"], alias_to_node
+                requests = []
+                for candidate in chunk:
+                    alias = candidate["candidate_id"]
+                    requests.append(
+                        {
+                            "role": "7B-B",
+                            "prompt_name": "7b_b_enhanced_stage2",
+                            "prompt_version": "engineering-stage2-v3",
+                            "payload": {
+                                "incident_window": {
+                                    "start": incident["fault_start_time_utc"],
+                                    "end": incident["fault_end_time_utc"],
+                                },
+                                "candidate_map_policy": "Cxx aliases only",
+                                "topology": compact_topology(
+                                    incident["topology"], alias_to_node
+                                ),
+                                "candidates": [candidate],
+                            },
+                            "validator": lambda value, expected={alias}: (
+                                validate_stage2(value, expected)
+                            ),
+                        }
+                    )
+                parts = backend.generate_json_batch(requests, max_new_tokens=512)
+                for part in parts:
+                    stage2_items.extend(part["candidates"])
+            if config["stage2"].get("engineering_component_floor", False):
+                shortlist_by_alias = {
+                    item["candidate_id"]: item for item in shortlist
+                }
+                for item in stage2_items:
+                    stage1_item = shortlist_by_alias[item["candidate_id"]]
+                    item["model_reported_components"] = {
+                        key: item[key]
+                        for key in (
+                            "local_anomaly_score",
+                            "temporal_precedence_score",
+                            "fault_pattern_compatibility_score",
+                            "symptom_likelihood",
+                        )
+                    }
+                    item["local_anomaly_score"] = max(
+                        item["local_anomaly_score"],
+                        min(
+                            1.0,
+                            stage1_item["deterministic_feature_score"]
+                            + stage1_item["model_anomaly_score"] * 0.25,
                         ),
-                        "candidates": chunk,
-                    },
-                    validator=lambda value, aliases=chunk_aliases: validate_stage2(
-                        value, aliases
-                    ),
-                )
-                stage2_items.extend(part["candidates"])
+                    )
+                    item["temporal_precedence_score"] = max(
+                        item["temporal_precedence_score"],
+                        stage1_item["temporal_change_score"],
+                    )
+                    item["fault_pattern_compatibility_score"] = max(
+                        item["fault_pattern_compatibility_score"],
+                        stage1_item["direct_fault_evidence_score"],
+                    )
+                    item["symptom_likelihood"] = max(
+                        item["symptom_likelihood"],
+                        stage1_item["symptom_likelihood"],
+                    )
             top5, rank_data = score_stage2(
                 stage2_items,
                 alias_to_node,
