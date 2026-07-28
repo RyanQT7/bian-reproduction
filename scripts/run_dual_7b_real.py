@@ -100,6 +100,7 @@ def smoke_structured(backend: Dual7BBackend) -> dict:
         {"fault_type": "bgp_session_down", "fault_category": "bgp"},
         {"fault_type": "route_blackhole", "fault_category": "static_route"},
     )
+    smoke_aliases = tuple(f"C{index:02d}" for index in range(1, 6))
     stage2 = backend.generate_json(
         role="7B-B",
         prompt_name="7b_b_stage2",
@@ -107,14 +108,23 @@ def smoke_structured(backend: Dual7BBackend) -> dict:
         payload={
             "incident_id": "mock-smoke",
             "rank_round": 1,
-            "allowed_candidates": list(nodes),
-            "candidate_evidence": device_result["devices"],
-            "stage1_scores": stage1["scores"],
-            "topology": {"nodes": list(nodes), "edges": []},
+            "allowed_candidates": list(smoke_aliases),
+            "candidate_evidence": [
+                {
+                    **item,
+                    "node_id": smoke_aliases[index],
+                }
+                for index, item in enumerate(device_result["devices"])
+            ],
+            "stage1_scores": {
+                smoke_aliases[index]: stage1["scores"][node]
+                for index, node in enumerate(nodes)
+            },
+            "topology": {"nodes": list(smoke_aliases), "edges": []},
             "timeline": [],
             "fault_taxonomy": list(taxonomy),
         },
-        validator=lambda value: validate_stage2(value, nodes, taxonomy),
+        validator=lambda value: validate_stage2(value, smoke_aliases, taxonomy),
     )
     return {
         "status": "passed",
@@ -228,6 +238,54 @@ def run_incident(
         incident["fault_end_time_utc"],
         config["max_timeline_events"],
     )
+    alias_by_node = {
+        node: f"C{index:02d}" for index, node in enumerate(filtered, start=1)
+    }
+    node_by_alias = {alias: node for node, alias in alias_by_node.items()}
+    transit_nodes = sorted(
+        {
+            item["node_id"]
+            for item in subgraph["nodes"]
+            if item["node_id"] not in alias_by_node
+        }
+    )
+    transit_alias = {
+        node: f"T{index:02d}" for index, node in enumerate(transit_nodes, start=1)
+    }
+    topology_alias = {**alias_by_node, **transit_alias}
+    model_topology = {
+        "nodes": [
+            {
+                "id": topology_alias[item["node_id"]],
+                "candidate": item["node_id"] in alias_by_node,
+            }
+            for item in subgraph["nodes"]
+        ],
+        "edges": [
+            {
+                "source": topology_alias[item["source"]],
+                "target": topology_alias[item["target"]],
+                "edge_type": item["edge_type"],
+                "protocol": item.get("protocol"),
+            }
+            for item in subgraph["edges"]
+        ],
+    }
+    model_timeline = [
+        {**item, "node_id": alias_by_node[item["node_id"]]}
+        for item in timeline
+        if item["node_id"] in alias_by_node
+    ]
+    model_evidence = [
+        {
+            "candidate_id": alias_by_node[node],
+            "is_anomalous": analysis_by_node[node]["is_anomalous"],
+            "anomaly_score": analysis_by_node[node]["anomaly_score"],
+            "anomaly_evidence": analysis_by_node[node]["anomaly_evidence"],
+            "uncertainty": analysis_by_node[node]["uncertainty"],
+        }
+        for node in filtered
+    ]
     rounds = []
     for round_number in range(1, config["rank_rounds"] + 1):
         result = backend.generate_json(
@@ -244,15 +302,24 @@ def run_incident(
                     if round_number == 2
                     else "prioritize counter-evidence and robustness"
                 ),
-                "allowed_candidates": list(filtered),
-                "candidate_evidence": [analysis_by_node[node] for node in filtered],
-                "stage1_scores": {node: stage1["scores"][node] for node in filtered},
-                "topology": subgraph,
-                "timeline": timeline,
+                "candidate_alias_map": [
+                    {"candidate_id": alias_by_node[node]} for node in filtered
+                ],
+                "allowed_candidates": list(node_by_alias),
+                "candidate_evidence": model_evidence,
+                "stage1_scores": {
+                    alias_by_node[node]: stage1["scores"][node] for node in filtered
+                },
+                "topology": model_topology,
+                "timeline": model_timeline,
                 "fault_taxonomy": list(taxonomy),
             },
-            validator=lambda value: validate_stage2(value, filtered, taxonomy),
+            validator=lambda value: validate_stage2(
+                value, tuple(node_by_alias), taxonomy
+            ),
         )
+        for item in result["root_causes"]:
+            item["node_id"] = node_by_alias[item["node_id"]]
         rounds.append(result)
     top5, top3, raw_rankings = aggregate_stage2_rounds(
         rounds, filtered, taxonomy

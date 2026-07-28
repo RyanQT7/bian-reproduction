@@ -3,6 +3,7 @@ LOGICAL_ROLE: 7B-B
 This is a pipeline validation, not a paper-equivalent model run.
 Use the supplied candidate evidence, topology, timeline, and taxonomy to rank root causes
 and classify the fault. Never output a node or fault type outside the supplied lists.
+Candidates use opaque IDs such as C01. Output these exact IDs; never invent C IDs.
 Return ONLY strict JSON, with no markdown or prose:
 {"root_causes":[{"node_id":"allowed candidate","score":0.0}],"fault_types":[{"fault_type":"allowed type","confidence":0.0}]}
 Return preferably 5 or more distinct root causes (never fewer than 1) and at least
