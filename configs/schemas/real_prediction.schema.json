@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BiAn RCA prediction record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "incident_id",
+    "top5_root_causes",
+    "predicted_fault_type",
+    "predicted_fault_category",
+    "fault_type_top3",
+    "rank_of_ranks"
+  ],
+  "properties": {
+    "incident_id": {"type": "string", "pattern": "^incident-[0-9]{4}$"},
+    "top5_root_causes": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rank", "node_id", "failure_score", "reason_summary"],
+        "properties": {
+          "rank": {"type": "integer", "minimum": 1, "maximum": 5},
+          "node_id": {
+            "type": "string",
+            "pattern": "^region-[1-8]-(br-[12]|cr-[12]|fw|traffic-vm|service-[123])$"
+          },
+          "failure_score": {"type": "number", "minimum": 0},
+          "reason_summary": {"type": "string"}
+        }
+      }
+    },
+    "predicted_fault_type": {"type": "string"},
+    "predicted_fault_category": {"type": "string"},
+    "fault_type_top3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rank", "fault_type", "fault_category", "confidence", "reason_summary"
+        ],
+        "properties": {
+          "rank": {"type": "integer", "minimum": 1, "maximum": 3},
+          "fault_type": {"type": "string"},
+          "fault_category": {"type": "string"},
+          "confidence": {"type": "number", "minimum": 0},
+          "reason_summary": {"type": "string"}
+        }
+      }
+    },
+    "rank_of_ranks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rounds", "raw_rankings"],
+      "properties": {
+        "rounds": {"type": "integer", "minimum": 1},
+        "raw_rankings": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 5,
+            "items": {"type": "string"}
+          }
+        }
+      }
+    }
+  }
+}
