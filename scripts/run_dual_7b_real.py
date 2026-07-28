@@ -54,24 +54,31 @@ def smoke_structured(backend: Dual7BBackend) -> dict:
         "region-1-service-2",
         "region-1-service-3",
     )
-    device_result = backend.generate_json(
-        role="7B-A",
-        prompt_name="7b_a_device_analysis",
-        prompt_version="dual7b-a-device-v1",
-        payload={
-            "incident_id": "mock-smoke",
-            "required_node_ids": list(nodes),
-            "device_evidence_lines": [
-                f"node={node}|family={'br' if 'br-' in node else 'service'}|"
-                f"states=node_metrics={status}|"
-                f"top_changes={'routing.bgp_session_up:1->0->post:1,rel:1' if node == nodes[0] else 'none'}"
-                for node, status in zip(
-                    nodes, ("available", "partial", "empty", "missing", "collection_failed")
-                )
-            ],
-        },
-        validator=lambda value: validate_device_analysis(value, nodes),
-    )
+    statuses = ("available", "partial", "empty", "missing", "collection_failed")
+    smoke_devices = []
+    for indexes in batched(list(range(len(nodes))), 2):
+        expected = tuple(nodes[index] for index in indexes)
+        part = backend.generate_json(
+            role="7B-A",
+            prompt_name="7b_a_device_analysis",
+            prompt_version="dual7b-a-device-v1",
+            payload={
+                "incident_id": "mock-smoke",
+                "required_node_ids": list(expected),
+                "device_evidence_lines": [
+                    f"node={nodes[index]}|"
+                    f"family={'br' if 'br-' in nodes[index] else 'service'}|"
+                    f"states=node_metrics={statuses[index]}|"
+                    f"top_changes={'routing.bgp_session_up:1->0->post:1,rel:1' if index == 0 else 'none'}"
+                    for index in indexes
+                ],
+            },
+            validator=lambda value, requested=expected: validate_device_analysis(
+                value, requested
+            ),
+        )
+        smoke_devices.extend(part["devices"])
+    device_result = {"devices": smoke_devices}
     # The Stage 1 smoke fixture must exercise normalization, so explicitly supply
     # one synthetic anomaly after independently validating the 7B-A response.
     device_result["devices"][0].update(
