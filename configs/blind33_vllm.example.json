@@ -1,0 +1,59 @@
+{
+  "_provenance": "frozen-method-from-dual7b-v3-plus-declared-fallback",
+  "result_label": "BiAn 33-case Blind RCA Validation",
+  "model_configuration": "new_stage1_v3_fused_vllm_32b_bf16",
+  "prediction_mode_success": "fused_stage1_stage2",
+  "prediction_mode_fallback": "stage1_fallback_after_stage2_failure",
+  "paper_reproduction": false,
+  "strict_blind_evaluation": true,
+  "incident_detection_evaluated": false,
+  "stage1": {
+    "weights": {
+      "deterministic_feature_score": 0.35,
+      "model_anomaly_score": 0.10,
+      "temporal_change_score": 0.15,
+      "direct_fault_evidence_score": 0.35,
+      "data_quality_adjustment": 1.0,
+      "symptom_likelihood_penalty": 0.20
+    },
+    "top_p": 0.9,
+    "min_candidates": 10,
+    "max_candidates": 15
+  },
+  "v3_fusion": {
+    "engineering_component_floor": true,
+    "local_anomaly_stage1_model_factor": 0.25,
+    "weights": {
+      "local_anomaly_score": 0.30,
+      "temporal_precedence_score": 0.25,
+      "topology_upstream_score": 0.25,
+      "fault_pattern_compatibility_score": 0.20,
+      "symptom_likelihood_penalty": 0.15
+    }
+  },
+  "backend": "vllm",
+  "precision": "bfloat16",
+  "quantization": null,
+  "physical_gpus": [2, 3],
+  "tensor_parallel_size": 2,
+  "pipeline_parallel_size": 1,
+  "gpu_memory_utilization": 0.9,
+  "max_model_len": 32768,
+  "max_num_seqs": 16,
+  "enforce_eager": true,
+  "disable_custom_all_reduce": true,
+  "use_flashinfer_sampler": false,
+  "max_input_tokens": 30000,
+  "stage2_max_new_tokens": 4096,
+  "classification_max_new_tokens": 2048,
+  "stage2_seeds": [32001, 32002, 32003],
+  "stage2_temperature": 0.6,
+  "stage2_top_p": 0.95,
+  "structured_retries": 1,
+  "evidence_per_candidate": 4,
+  "minimum_valid_stage2_rounds": 2,
+  "expected_incident_count": 33,
+  "expected_taxonomy_count": 32,
+  "stage1_seed": 42,
+  "seed": 42
+}

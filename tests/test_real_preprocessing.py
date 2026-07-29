@@ -2,6 +2,7 @@ from datetime import timezone
 import unittest
 
 from bian.data.real_preprocessing import (
+    normalize_experiment_incidents,
     NumericAccumulator,
     assert_no_leakage,
     count_csv_records,
@@ -10,10 +11,40 @@ from bian.data.real_preprocessing import (
     phase_for,
     validate_experiment_incidents,
 )
+from bian.data.reference_topology import build_topology, inventory
 from bian.data.validators import ValidationError
 
 
 class RealPreprocessingTests(unittest.TestCase):
+    def test_blind_incident_schema_normalizes_without_truth(self):
+        records = [
+            {
+                "incident_id": "incident-0001",
+                "start_time": "2026-07-28T06:08:37Z",
+                "end_time": "2026-07-28T06:11:37Z",
+                "analysis_window_start": "2026-07-28T06:03:37Z",
+                "analysis_window_end": "2026-07-28T06:16:37Z",
+                "candidate_scope": "all_72_candidate_nodes",
+                "timezone": "UTC",
+                "metadata": {"dataset_id": "blind"},
+            }
+        ]
+        normalized = normalize_experiment_incidents(records, expected_count=1)
+        self.assertEqual(normalized[0]["dataset_id"], "blind")
+        self.assertEqual(normalized[0]["fault_start_time_utc"], records[0]["start_time"])
+        self.assertFalse(normalized[0]["ground_truth_included"])
+
+    def test_reference_topology_has_72_candidates(self):
+        self.assertEqual(len(inventory()), 72)
+        topology = build_topology({(1, 2)})
+        self.assertEqual(sum(node["candidate"] for node in topology["nodes"]), 72)
+        self.assertTrue(
+            any(
+                edge["source"] == "region-1-br-1"
+                and edge["target"] == "region-2-br-1"
+                for edge in topology["edges"]
+            )
+        )
     incident = {
         "incident_id": "incident-0001",
         "dataset_timezone": "UTC",

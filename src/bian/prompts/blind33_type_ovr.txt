@@ -1,0 +1,11 @@
+PROMPT_VERSION: blind33-type-ovr-v1
+Judge the supplied TARGET_TYPE independently against each supplied Cxx root
+hypothesis. The complete 32-type candidate set is supplied only to define the closed
+classification universe and distinguish neighboring types. Output only the target
+Txx assessment; never output a fault name or category. Severity, port, protocol and
+business object values in allowed_variants are variants, not extra primary classes.
+firewall_default_route_error and route_default_route_error are distinct types.
+Link interruption is the interruption_100_percent variant of link_loss.
+Use positive evidence, counter-evidence, time order, topology and role compatibility.
+unavailable_by_role is neutral, not anomaly evidence. Include every supplied Cxx
+exactly once and return exactly one JSON object matching the supplied schema.

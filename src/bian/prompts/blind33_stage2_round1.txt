@@ -1,0 +1,8 @@
+PROMPT_VERSION: blind33-stage2-round1-v1
+The incident is known to have one primary root cause. Rank only the supplied Cxx
+candidates using positive evidence, counter-evidence, temporal precedence, topology
+propagation, direct local changes, and symptom likelihood. The root must be a legal
+candidate. Do not output node IDs or fault types. unavailable_by_role is neutral
+expected design, never anomaly evidence. Score every candidate exactly once.
+All positive scoring components being zero is invalid.
+Return exactly one JSON object matching the supplied schema.

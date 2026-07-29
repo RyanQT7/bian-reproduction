@@ -1,0 +1,7 @@
+PROMPT_VERSION: blind33-stage2-round3-v1
+Perform an independent causal audit of every supplied Cxx for this known incident.
+Distinguish a direct root from downstream symptoms using time order, topology,
+metric-pattern compatibility, supporting evidence and counter-evidence. The primary
+root must be selected from the legal Cxx set. Do not output node IDs or fault types.
+unavailable_by_role contributes zero anomaly evidence. All-positive-zero scoring is
+invalid. Return exactly one JSON object matching the supplied schema.

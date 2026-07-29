@@ -26,6 +26,67 @@ TYPE_COMPONENTS = (
 )
 
 
+def apply_v3_stage1_fusion(
+    items: list[dict[str, Any]],
+    shortlist_by_alias: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Apply the frozen dual-7B v3 Stage-1 component floors."""
+    fused = []
+    for original in items:
+        item = dict(original)
+        stage1 = shortlist_by_alias[item["candidate_id"]]
+        item["model_reported_components"] = {
+            field: item[field]
+            for field in (
+                "local_anomaly_score",
+                "temporal_precedence_score",
+                "fault_pattern_compatibility_score",
+                "symptom_likelihood",
+            )
+        }
+        item["local_anomaly_score"] = max(
+            item["local_anomaly_score"],
+            min(
+                1.0,
+                stage1["deterministic_feature_score"]
+                + stage1["model_anomaly_score"] * 0.25,
+            ),
+        )
+        item["temporal_precedence_score"] = max(
+            item["temporal_precedence_score"],
+            stage1["temporal_change_score"],
+        )
+        item["fault_pattern_compatibility_score"] = max(
+            item["fault_pattern_compatibility_score"],
+            stage1["direct_fault_evidence_score"],
+        )
+        item["symptom_likelihood"] = max(
+            item["symptom_likelihood"], stage1["symptom_likelihood"]
+        )
+        fused.append(item)
+    return fused
+
+
+def stage1_fallback_top5(
+    ranking: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Render Stage 1 Top5 as an explicit Stage 2 failure fallback."""
+    if len(ranking) < 5:
+        raise ValidationError("Stage 1 fallback requires at least five candidates")
+    raw = {item["node_id"]: item["stage1_score"] for item in ranking[:5]}
+    scores = normalize_scores(raw)
+    return [
+        {
+            "rank": index,
+            "node_id": item["node_id"],
+            "failure_score": scores[item["node_id"]],
+            "rank_weight": item["stage1_score"],
+            "reason_summary": "Frozen Stage 1 fallback after Stage 2 failure",
+        }
+        for index, item in enumerate(ranking[:5], 1)
+    ]
+
+
 def bounded(value: Any, field: str) -> float:
     if not isinstance(value, (int, float)) or not math.isfinite(value):
         raise ValidationError(f"{field} must be finite")

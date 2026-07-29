@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -28,6 +29,7 @@ def main() -> int:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--model-path", type=Path, required=True)
     parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument("--incident-id")
     args = parser.parse_args()
     if "evaluation" in str(args.input_root).lower():
         raise ValueError("truth-access guard: inference input cannot reference evaluation")
@@ -48,7 +50,14 @@ def main() -> int:
     rankings_path = args.output_dir / "full_rankings.jsonl"
     shortlist_path = args.output_dir / "shortlist.jsonl"
     analyses_path = args.output_dir / "device_analyses.jsonl"
-    for path in sorted(args.input_root.glob("incident-*/incident_input.json")):
+    input_paths = sorted(args.input_root.glob("incident-*/incident_input.json"))
+    if args.incident_id:
+        input_paths = [
+            path for path in input_paths if path.parent.name == args.incident_id
+        ]
+    if not input_paths:
+        raise ValueError("no incident inputs selected")
+    for path in input_paths:
         incident = json.loads(path.read_text())
         evidence = incident["engineering_evidence"]
         analyses = []
@@ -115,6 +124,12 @@ def main() -> int:
             indent=2,
         )
         + "\n"
+    )
+    (args.output_dir / "stage1_config.yaml").write_text(
+        json.dumps(config, ensure_ascii=False, indent=2) + "\n"
+    )
+    (args.output_dir / "stage1_config.sha256").write_text(
+        hashlib.sha256(args.config.read_bytes()).hexdigest() + "\n"
     )
     return 0
 

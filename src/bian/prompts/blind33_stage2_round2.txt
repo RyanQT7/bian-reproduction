@@ -1,0 +1,8 @@
+PROMPT_VERSION: blind33-stage2-round2-v1
+Independently review the known incident's supplied Cxx root hypotheses. Give
+discriminative scores using chronology, common-upstream topology, direct protocol,
+route, rule, resource or service evidence, recovery, and explicit counter-evidence.
+Do not see or infer another round's answer. Do not output node IDs or fault types.
+unavailable_by_role is neutral. Include every Cxx exactly once. A vector whose
+positive scoring components are all zero is structurally invalid.
+Return exactly one JSON object matching the supplied schema.

@@ -134,16 +134,34 @@ def validate_predictions(
             fault_top3 = None
         if classification_status == "classification_failed":
             rank_data = record.get("rank_of_ranks")
+            fallback = (
+                record.get("prediction_mode")
+                == "stage1_fallback_after_stage2_failure"
+            )
             if not isinstance(rank_data, dict):
                 errors.append(f"{incident_id}: rank_of_ranks is required")
             else:
                 rounds = rank_data.get("rounds")
                 raw_rankings = rank_data.get("raw_rankings")
-                if expected_rank_rounds is not None and rounds != expected_rank_rounds:
+                if fallback and (
+                    rounds != 0
+                    or raw_rankings != []
+                    or rank_data.get("fallback") != "stage1"
+                ):
+                    errors.append(
+                        f"{incident_id}: invalid explicit Stage 1 fallback rank metadata"
+                    )
+                elif (
+                    not fallback
+                    and expected_rank_rounds is not None
+                    and rounds != expected_rank_rounds
+                ):
                     errors.append(
                         f"{incident_id}: expected {expected_rank_rounds} rank rounds"
                     )
                 if (
+                    not fallback
+                    and
                     minimum_rank_rounds is not None
                     and (
                         not isinstance(rounds, int)
@@ -188,16 +206,34 @@ def validate_predictions(
         ):
             errors.append(f"{incident_id}: top-level classification must match Top1")
         rank_data = record.get("rank_of_ranks")
+        fallback = (
+            record.get("prediction_mode")
+            == "stage1_fallback_after_stage2_failure"
+        )
         if not isinstance(rank_data, dict):
             errors.append(f"{incident_id}: rank_of_ranks is required")
         else:
             rounds = rank_data.get("rounds")
             raw_rankings = rank_data.get("raw_rankings")
-            if expected_rank_rounds is not None and rounds != expected_rank_rounds:
+            if fallback and (
+                rounds != 0
+                or raw_rankings != []
+                or rank_data.get("fallback") != "stage1"
+            ):
+                errors.append(
+                    f"{incident_id}: invalid explicit Stage 1 fallback rank metadata"
+                )
+            elif (
+                not fallback
+                and expected_rank_rounds is not None
+                and rounds != expected_rank_rounds
+            ):
                 errors.append(
                     f"{incident_id}: expected {expected_rank_rounds} rank rounds"
                 )
             if (
+                not fallback
+                and
                 minimum_rank_rounds is not None
                 and (
                     not isinstance(rounds, int)

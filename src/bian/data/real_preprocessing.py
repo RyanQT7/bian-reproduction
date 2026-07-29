@@ -15,6 +15,8 @@ from .validators import ValidationError
 
 
 ROLE_ALIASES = {
+    "br-a": "br-1",
+    "br-b": "br-2",
     "br-1": "br-1",
     "br-2": "br-2",
     "cr-1": "cr-1",
@@ -83,9 +85,41 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
     return records
 
 
-def validate_experiment_incidents(records: list[dict[str, Any]]) -> None:
-    if len(records) != 10:
-        raise ValidationError(f"expected exactly 10 experiment incidents, got {len(records)}")
+def normalize_experiment_incidents(
+    records: list[dict[str, Any]], *, expected_count: int
+) -> list[dict[str, Any]]:
+    """Normalize both bundle-v1 and blind-set incident schemas without truth."""
+    normalized = []
+    for record in records:
+        if "analysis_window_start" in record:
+            normalized.append(
+                {
+                    "incident_id": record["incident_id"],
+                    "dataset_id": record.get("metadata", {}).get(
+                        "dataset_id", "unknown"
+                    ),
+                    "dataset_timezone": record["timezone"],
+                    "fault_start_time_utc": record["start_time"],
+                    "fault_end_time_utc": record["end_time"],
+                    "slice_start_time_utc": record["analysis_window_start"],
+                    "slice_end_time_utc": record["analysis_window_end"],
+                    "candidate_scope": record["candidate_scope"],
+                    "ground_truth_included": False,
+                }
+            )
+        else:
+            normalized.append(dict(record))
+    validate_experiment_incidents(normalized, expected_count=expected_count)
+    return normalized
+
+
+def validate_experiment_incidents(
+    records: list[dict[str, Any]], *, expected_count: int = 10
+) -> None:
+    if len(records) != expected_count:
+        raise ValidationError(
+            f"expected exactly {expected_count} experiment incidents, got {len(records)}"
+        )
     ids = [record.get("incident_id") for record in records]
     if len(set(ids)) != len(ids):
         raise ValidationError("experiment incident IDs must be unique")
@@ -294,25 +328,55 @@ def _empty_phase(expected_metrics: Iterable[str]) -> dict[str, Any]:
 def preprocess_dataset(
     *,
     raw_root: Path,
-    bundle_root: Path,
     output_root: Path,
     config: dict[str, Any],
+    bundle_root: Path | None = None,
+    experiment_path: Path | None = None,
+    taxonomy_path: Path | None = None,
+    topology: dict[str, Any] | None = None,
+    inventory: list[dict[str, Any]] | None = None,
+    region_mapping: dict[Path, str] | None = None,
+    expected_incident_count: int = 10,
 ) -> dict[str, Any]:
-    experiment_path = bundle_root / "experiment" / "incidents.jsonl"
-    topology_path = bundle_root / "topology" / "full_device_topology.json"
-    inventory_path = bundle_root / "topology" / "candidate_inventory.json"
-    taxonomy_path = bundle_root / "schemas" / "fault_taxonomy.json"
-    incidents = load_jsonl(experiment_path)
-    validate_experiment_incidents(incidents)
-    topology = json.loads(topology_path.read_text(encoding="utf-8"))
-    inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
-    taxonomy = json.loads(taxonomy_path.read_text(encoding="utf-8"))
+    if bundle_root is not None:
+        experiment_path = experiment_path or bundle_root / "experiment" / "incidents.jsonl"
+        taxonomy_path = taxonomy_path or bundle_root / "schemas" / "fault_taxonomy.json"
+        topology = topology or json.loads(
+            (bundle_root / "topology" / "full_device_topology.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        inventory = inventory or json.loads(
+            (bundle_root / "topology" / "candidate_inventory.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    if experiment_path is None or taxonomy_path is None:
+        raise ValidationError("explicit experiment and taxonomy paths are required")
+    if topology is None or inventory is None:
+        raise ValidationError("topology and inventory are required")
+    incidents = normalize_experiment_incidents(
+        load_jsonl(experiment_path), expected_count=expected_incident_count
+    )
+    taxonomy_document = json.loads(taxonomy_path.read_text(encoding="utf-8"))
+    taxonomy = (
+        taxonomy_document["candidates"]
+        if isinstance(taxonomy_document, dict)
+        else taxonomy_document
+    )
+    taxonomy = [
+        {
+            **item,
+            "fault_category": item.get("fault_category", item.get("category")),
+        }
+        for item in taxonomy
+    ]
     if len(inventory) != 72:
         raise ValidationError(f"expected 72 candidate nodes, got {len(inventory)}")
     candidate_ids = tuple(sorted(item["node_id"] for item in inventory))
     if any(not item.get("candidate") for item in inventory):
         raise ValidationError("candidate inventory contains a non-candidate node")
-    region_mapping = infer_region_mapping(raw_root, topology)
+    region_mapping = region_mapping or infer_region_mapping(raw_root, topology)
     source_files: dict[str, str] = config["source_files"]
     time_fields: dict[str, str] = config["time_fields"]
     numeric_fields: dict[str, list[str]] = config["numeric_fields"]
