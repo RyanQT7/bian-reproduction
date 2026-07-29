@@ -522,7 +522,7 @@ def main() -> int:
     }
     if set(selected) - set(stage1_rankings) or set(selected) - set(shortlists):
         raise ValidationError("new Stage 1 output is incomplete")
-    args.output_dir.mkdir(parents=True)
+    args.output_dir.mkdir(parents=True, exist_ok=True)
     for relative in (
         "stage1_reference", "stage2", "classification",
         "prediction/reports", "prediction/logs/raw_outputs", "environment",
