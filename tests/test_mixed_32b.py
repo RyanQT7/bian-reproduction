@@ -20,7 +20,7 @@ class Mixed32BTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             validate_stage2_round({"candidates": [item]}, {"C01"}, set())
 
-    def test_all_zero_classification_is_rejected(self):
+    def test_all_zero_single_type_is_valid_negative_evidence(self):
         item = {
             "candidate_id": "C01",
             "root_role_compatibility": 0,
@@ -32,13 +32,13 @@ class Mixed32BTests(unittest.TestCase):
             "supporting_evidence_ids": [],
             "counter_evidence_ids": [],
         }
-        with self.assertRaises(ValidationError):
-            validate_type_result(
-                {"type_id": "T01", "root_hypotheses": [item]},
-                "T01",
-                {"C01"},
-                set(),
-            )
+        result = validate_type_result(
+            {"type_id": "T01", "root_hypotheses": [item]},
+            "T01",
+            {"C01"},
+            set(),
+        )
+        self.assertEqual(result["root_hypotheses"][0]["candidate_id"], "C01")
 
 
 if __name__ == "__main__":

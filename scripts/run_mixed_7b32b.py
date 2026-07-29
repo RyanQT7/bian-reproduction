@@ -207,6 +207,16 @@ def run_classification(
             }
             type_results.append(record)
             append(output_path, record)
+            append(
+                output_path.parent / "root_weighted_scores.jsonl",
+                {
+                    "incident_id": incident_id,
+                    "type_id": type_id,
+                    "fault_type": taxonomy_item["fault_type"],
+                    "aggregated_raw_score": score,
+                    "root_contributions": contributions,
+                },
+            )
     if not any(raw_scores.values()):
         raise ValidationError("all one-vs-rest type scores are zero")
     normalized = normalize_scores(raw_scores)
@@ -233,6 +243,15 @@ def run_classification(
     reverse_ranked = sorted(reverse, key=lambda item: (-reverse[item], item))
     if reverse_ranked[:3] != ranked[:3]:
         raise ValidationError("classification aggregation is order dependent")
+    append(
+        output_path.parent / "order_invariance.jsonl",
+        {
+            "incident_id": incident_id,
+            "forward_top3": ranked[:3],
+            "reverse_top3": reverse_ranked[:3],
+            "invariant": True,
+        },
+    )
     return top3, type_results
 
 
