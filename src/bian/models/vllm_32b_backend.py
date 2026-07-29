@@ -48,6 +48,7 @@ class VLLM32BBackend:
         max_model_len: int = 16384,
         max_num_seqs: int = 16,
         enforce_eager: bool = True,
+        disable_custom_all_reduce: bool = False,
         raw_output_dir: Path | None = None,
         physical_gpu_ids: list[int] | None = None,
     ) -> None:
@@ -60,6 +61,7 @@ class VLLM32BBackend:
         self.max_model_len = max_model_len
         self.max_num_seqs = max_num_seqs
         self.enforce_eager = enforce_eager
+        self.disable_custom_all_reduce = disable_custom_all_reduce
         self.raw_output_dir = raw_output_dir
         self.physical_gpu_ids = physical_gpu_ids or []
         self.calls: list[VLLMCall] = []
@@ -91,6 +93,7 @@ class VLLM32BBackend:
             max_num_seqs=self.max_num_seqs,
             cpu_offload_gb=0,
             enforce_eager=self.enforce_eager,
+            disable_custom_all_reduce=self.disable_custom_all_reduce,
             reasoning_parser="deepseek_r1",
             enable_prefix_caching=True,
             disable_log_stats=False,
@@ -176,7 +179,8 @@ class VLLM32BBackend:
         requests: list[dict[str, Any]],
         *,
         max_new_tokens: int,
-    ) -> list[dict[str, Any]]:
+        allow_partial: bool = False,
+    ) -> list[dict[str, Any] | None]:
         self.load()
         from vllm import SamplingParams
         from vllm.sampling_params import StructuredOutputsParams
@@ -260,7 +264,9 @@ class VLLM32BBackend:
                 self._save_raw(call)
             pending = next_pending
             if not pending:
-                return [item for item in results if item is not None]
+                return results
+        if allow_partial:
+            return results
         failed = ", ".join(f"{index}: {errors[index]}" for index in pending)
         raise ValidationError(f"vLLM structured generation failed: {failed}")
 
@@ -287,9 +293,11 @@ class VLLM32BBackend:
         }
         if seed is not None:
             request["seed"] = seed
-        return self.generate_json_batch(
+        results = self.generate_json_batch(
             [request], max_new_tokens=self.config.max_new_tokens
-        )[0]
+        )
+        assert results[0] is not None
+        return results[0]
 
     def call_manifest(self) -> list[dict[str, Any]]:
         return [asdict(call) for call in self.calls]
@@ -307,9 +315,9 @@ class VLLM32BBackend:
             "max_model_len": self.max_model_len,
             "max_num_seqs": self.max_num_seqs,
             "enforce_eager": self.enforce_eager,
+            "disable_custom_all_reduce": self.disable_custom_all_reduce,
             "reasoning_parser": "deepseek_r1",
             "physical_gpu_ids": self.physical_gpu_ids,
             "load_seconds": self.load_seconds,
             "peak_gpu_memory_mib": dict(self._peak_gpu_memory_mib),
         }
-

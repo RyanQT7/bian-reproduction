@@ -18,7 +18,6 @@ def _evidence_ids(values: Iterable[str]) -> dict[str, Any]:
     return {
         "type": "array",
         "items": items,
-        "uniqueItems": True,
         "maxItems": min(10, len(allowed)),
     }
 
@@ -98,4 +97,3 @@ def classification_schema(
             },
         },
     }
-

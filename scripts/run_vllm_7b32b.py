@@ -401,6 +401,7 @@ def build_backend(
         max_model_len=config["max_model_len"],
         max_num_seqs=config["max_num_seqs"],
         enforce_eager=config["enforce_eager"],
+        disable_custom_all_reduce=config["disable_custom_all_reduce"],
         raw_output_dir=raw_output_dir,
         physical_gpu_ids=config["physical_gpus"],
     )
@@ -475,7 +476,9 @@ def run_inference(
         round_errors = []
         try:
             stage_outputs = backend.generate_json_batch(
-                stage_requests, max_new_tokens=config["stage2_max_new_tokens"]
+                stage_requests,
+                max_new_tokens=config["stage2_max_new_tokens"],
+                allow_partial=True,
             )
         except Exception as exc:
             stage_outputs = []
@@ -487,6 +490,24 @@ def run_inference(
         for round_index, (request, output) in enumerate(
             zip(stage_requests, stage_outputs), 1
         ):
+            if output is None:
+                matching_calls = [
+                    item
+                    for item in backend.calls
+                    if item.request_id == request["request_id"] and item.error
+                ]
+                round_errors.append(
+                    {
+                        "round": round_index,
+                        "error_type": "StructuredOutputValidationError",
+                        "error": (
+                            matching_calls[-1].error
+                            if matching_calls
+                            else "structured output remained invalid after retry"
+                        ),
+                    }
+                )
+                continue
             scores, audit = score_stage2_round(
                 output["candidates"],
                 alias_to_node,

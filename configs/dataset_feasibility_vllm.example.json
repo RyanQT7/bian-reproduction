@@ -20,6 +20,7 @@
   "max_model_len": 32768,
   "max_num_seqs": 16,
   "enforce_eager": true,
+  "disable_custom_all_reduce": true,
   "max_input_tokens": 30000,
   "stage2_max_new_tokens": 4096,
   "classification_max_new_tokens": 2048,
@@ -27,7 +28,7 @@
   "stage2_temperature": 0.6,
   "stage2_top_p": 0.95,
   "structured_retries": 1,
-  "evidence_per_candidate": 8,
+  "evidence_per_candidate": 4,
   "stage2_weights": {
     "local_anomaly_score": 0.3,
     "temporal_precedence_score": 0.25,

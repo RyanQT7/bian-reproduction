@@ -85,4 +85,3 @@ def select_evidence(
         {field: item.get(field) for field in EVIDENCE_FIELDS}
         for item in selected
     ]
-

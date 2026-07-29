@@ -20,6 +20,23 @@ class VLLMSchemaTests(unittest.TestCase):
         aliases = schema["properties"]["root_hypotheses"]["items"]["properties"]
         self.assertEqual(aliases["candidate_id"]["enum"], ["C01"])
 
+    def test_schemas_avoid_unsupported_unique_items_keyword(self):
+        schemas = (
+            stage2_schema({"C01"}, {"E01"}),
+            classification_schema("T01", {"C01"}, {"E01"}),
+        )
+
+        def contains_unique_items(value):
+            if isinstance(value, dict):
+                return "uniqueItems" in value or any(
+                    contains_unique_items(item) for item in value.values()
+                )
+            if isinstance(value, list):
+                return any(contains_unique_items(item) for item in value)
+            return False
+
+        self.assertTrue(all(not contains_unique_items(schema) for schema in schemas))
+
     def test_budget_prioritizes_referenced_and_direct_evidence(self):
         stage1 = {
             "supporting_evidence_ids": ["support"],
