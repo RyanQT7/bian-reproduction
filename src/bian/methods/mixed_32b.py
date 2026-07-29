@@ -174,6 +174,12 @@ def validate_type_result(
                 raise ValidationError(f"{field} contains unknown evidence ID")
             rendered[field] = ids[:10]
         clean.append(rendered)
+    if not any(
+        item[field] > 0
+        for item in clean
+        for field in TYPE_COMPONENTS[:-1]
+    ):
+        raise ValidationError("all classification compatibility components are zero")
     return {"type_id": type_id, "root_hypotheses": clean}
 
 

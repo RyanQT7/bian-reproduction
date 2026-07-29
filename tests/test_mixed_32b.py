@@ -1,7 +1,7 @@
 import unittest
 
 from bian.data.validators import ValidationError
-from bian.methods.mixed_32b import validate_stage2_round
+from bian.methods.mixed_32b import validate_stage2_round, validate_type_result
 
 
 class Mixed32BTests(unittest.TestCase):
@@ -19,6 +19,26 @@ class Mixed32BTests(unittest.TestCase):
         }
         with self.assertRaises(ValidationError):
             validate_stage2_round({"candidates": [item]}, {"C01"}, set())
+
+    def test_all_zero_classification_is_rejected(self):
+        item = {
+            "candidate_id": "C01",
+            "root_role_compatibility": 0,
+            "metric_pattern_compatibility": 0,
+            "protocol_state_compatibility": 0,
+            "temporal_pattern_compatibility": 0,
+            "topology_context_compatibility": 0,
+            "counter_evidence_penalty": 0,
+            "supporting_evidence_ids": [],
+            "counter_evidence_ids": [],
+        }
+        with self.assertRaises(ValidationError):
+            validate_type_result(
+                {"type_id": "T01", "root_hypotheses": [item]},
+                "T01",
+                {"C01"},
+                set(),
+            )
 
 
 if __name__ == "__main__":
