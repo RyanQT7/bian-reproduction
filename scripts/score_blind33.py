@@ -39,6 +39,15 @@ def main() -> int:
         raise ValueError("truth-access guard did not pass")
     predictions = load_jsonl(frozen)
     truths = load_jsonl(args.ground_truth_file)
+    normalized_truths = []
+    for item in truths:
+        roots = item.get("root_device_ids")
+        if not isinstance(roots, list) or len(roots) != 1:
+            raise ValueError(
+                f"{item.get('incident_id')}: exactly one canonical root_device_id is required"
+            )
+        normalized_truths.append({**item, "root_node_id": roots[0]})
+    truths = normalized_truths
     score = score_predictions(
         predictions=predictions,
         ground_truth=truths,
