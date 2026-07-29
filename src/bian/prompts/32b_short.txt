@@ -1,0 +1,1 @@
+Return exactly one JSON object and no other text: {"status":"ok"}
