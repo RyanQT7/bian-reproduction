@@ -20,7 +20,12 @@ class Sharded32BBackend(Dual7BBackend):
         device_map: str | dict[str, Any] = "balanced",
         max_memory: dict[int, str] | None = None,
     ) -> None:
-        super().__init__(model_path, config=config, prompt_dir=prompt_dir)
+        super().__init__(
+            model_path,
+            config=config,
+            prompt_dir=prompt_dir,
+            response_prefix="{",
+        )
         self.device_map = device_map
         self.max_memory = max_memory
         self.precision = "bfloat16"

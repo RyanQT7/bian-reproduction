@@ -32,18 +32,25 @@ def _has_complete_json(text: str) -> bool:
     return trailing in {"", "```"}
 
 
-def _json_stopping_criteria(tokenizer: Any, prompt_length: int):
+def _json_stopping_criteria(
+    tokenizer: Any, prompt_length: int, response_prefix: str = ""
+):
     from transformers import StoppingCriteria
 
     class JsonObjectComplete(StoppingCriteria):
         def __call__(self, input_ids, scores, **kwargs):
-            return all(
-                _has_complete_json(
-                    tokenizer.decode(
-                        row[prompt_length:], skip_special_tokens=True
+            import torch
+
+            return torch.tensor(
+                [
+                    _has_complete_json(
+                    response_prefix
+                    + tokenizer.decode(row[prompt_length:], skip_special_tokens=True)
                     )
-                )
-                for row in input_ids
+                    for row in input_ids
+                ],
+                dtype=torch.bool,
+                device=input_ids.device,
             )
 
     return JsonObjectComplete()
@@ -83,10 +90,12 @@ class Dual7BBackend:
         *,
         config: GenerationConfig,
         prompt_dir: Path,
+        response_prefix: str = "",
     ) -> None:
         self.model_path = model_path
         self.config = config
         self.prompt_dir = prompt_dir
+        self.response_prefix = response_prefix
         self._model = None
         self._tokenizer = None
         self.calls: list[ModelCall] = []
@@ -155,6 +164,7 @@ class Dual7BBackend:
                 "</think>\n" if rendered.rstrip().endswith("<think>") else
                 "<think>\n</think>\n"
             )
+            rendered += self.response_prefix
             inputs = self._tokenizer(
                 rendered,
                 return_tensors="pt",
@@ -181,13 +191,18 @@ class Dual7BBackend:
                     pad_token_id=self._tokenizer.eos_token_id,
                     use_cache=True,
                     stopping_criteria=[
-                        _json_stopping_criteria(self._tokenizer, input_tokens)
+                        _json_stopping_criteria(
+                            self._tokenizer, input_tokens, self.response_prefix
+                        )
                     ],
                 )
             torch.cuda.synchronize()
             elapsed = time.perf_counter() - started
             new_ids = outputs[0, input_tokens:]
-            raw = self._tokenizer.decode(new_ids, skip_special_tokens=True).strip()
+            raw = (
+                self.response_prefix
+                + self._tokenizer.decode(new_ids, skip_special_tokens=True)
+            ).strip()
             thinking = ""
             repair_used = False
             error = None
@@ -269,6 +284,7 @@ class Dual7BBackend:
                         if rendered.rstrip().endswith("<think>")
                         else "<think>\n</think>\n"
                     )
+                    + self.response_prefix
                 )
             inputs = self._tokenizer(
                 rendered_batch, return_tensors="pt", padding=True, truncation=False
@@ -292,7 +308,9 @@ class Dual7BBackend:
                     pad_token_id=self._tokenizer.pad_token_id,
                     use_cache=True,
                     stopping_criteria=[
-                        _json_stopping_criteria(self._tokenizer, padded_length)
+                        _json_stopping_criteria(
+                            self._tokenizer, padded_length, self.response_prefix
+                        )
                     ],
                 )
             torch.cuda.synchronize()
@@ -301,7 +319,10 @@ class Dual7BBackend:
             for batch_position, index in enumerate(pending):
                 request = requests[index]
                 new_ids = outputs[batch_position, padded_length:]
-                raw = self._tokenizer.decode(new_ids, skip_special_tokens=True).strip()
+                raw = (
+                    self.response_prefix
+                    + self._tokenizer.decode(new_ids, skip_special_tokens=True)
+                ).strip()
                 thinking = ""
                 repair_used = False
                 error = None

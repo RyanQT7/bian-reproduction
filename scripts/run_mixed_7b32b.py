@@ -160,46 +160,56 @@ def run_classification(
     }
     type_results = []
     raw_scores = {}
+    pending = []
     for index, taxonomy_item in enumerate(taxonomy, 1):
-        import torch
-
         type_id = f"T{index:02d}"
         seed = (
             int(hashlib.sha256(f"{incident_id}:{type_id}".encode()).hexdigest()[:8], 16)
             % (2**31)
         )
-        torch.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
-        result = backend.generate_json(
-            role="32B-Classification",
-            prompt_name="32b_type_ovr",
-            prompt_version="32b-type-ovr-v1",
-            payload={
-                "type": {
-                    "type_id": type_id,
-                    "fault_category": taxonomy_item["fault_category"],
-                    **profile(taxonomy_item["fault_type"]),
+        pending.append(
+            (
+                taxonomy_item,
+                seed,
+                {
+                    "role": "32B-Classification",
+                    "prompt_name": "32b_type_ovr",
+                    "prompt_version": "32b-type-ovr-v1",
+                    "payload": {
+                        "type": {
+                            "type_id": type_id,
+                            "fault_category": taxonomy_item["fault_category"],
+                            **profile(taxonomy_item["fault_type"]),
+                        },
+                        "root_hypotheses": roots,
+                        "deterministic_seed": seed,
+                    },
+                    "validator": lambda value, expected=type_id: validate_type_result(
+                        value, expected, root_aliases, evidence_ids
+                    ),
                 },
-                "root_hypotheses": roots,
-                "seed": seed,
-            },
-            validator=lambda value, expected=type_id: validate_type_result(
-                value, expected, root_aliases, evidence_ids
-            ),
+            )
         )
-        score, contributions = aggregate_type_result(result, root_weights)
-        raw_scores[taxonomy_item["fault_type"]] = score
-        record = {
-            "incident_id": incident_id,
-            "type_id": type_id,
-            "fault_type": taxonomy_item["fault_type"],
-            "fault_category": taxonomy_item["fault_category"],
-            "seed": seed,
-            "aggregated_raw_score": score,
-            "root_hypotheses": contributions,
-        }
-        type_results.append(record)
-        append(output_path, record)
+    for offset in range(0, len(pending), 4):
+        chunk = pending[offset : offset + 4]
+        outputs = backend.generate_json_batch(
+            [item[2] for item in chunk], max_new_tokens=2048
+        )
+        for (taxonomy_item, seed, _request), result in zip(chunk, outputs):
+            type_id = result["type_id"]
+            score, contributions = aggregate_type_result(result, root_weights)
+            raw_scores[taxonomy_item["fault_type"]] = score
+            record = {
+                "incident_id": incident_id,
+                "type_id": type_id,
+                "fault_type": taxonomy_item["fault_type"],
+                "fault_category": taxonomy_item["fault_category"],
+                "seed": seed,
+                "aggregated_raw_score": score,
+                "root_hypotheses": contributions,
+            }
+            type_results.append(record)
+            append(output_path, record)
     if not any(raw_scores.values()):
         raise ValidationError("all one-vs-rest type scores are zero")
     normalized = normalize_scores(raw_scores)
