@@ -282,8 +282,13 @@ def main() -> int:
             seed=config["stage2_seeds"][0],
         ),
         prompt_dir=PROJECT_ROOT / "src/bian/prompts",
-        device_map="balanced",
-        max_memory={0: "44GiB", 1: "44GiB"},
+        device_map={"": 0} if config["precision"] != "bfloat16" else "balanced",
+        max_memory=(
+            {0: "44GiB"}
+            if config["precision"] != "bfloat16"
+            else {0: "44GiB", 1: "44GiB"}
+        ),
+        precision=config["precision"],
     )
     started = time.perf_counter()
     load_started = time.perf_counter()

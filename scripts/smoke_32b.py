@@ -22,19 +22,28 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-path", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--precision", choices=("bfloat16", "int8", "nf4"), default="bfloat16"
+    )
     args = parser.parse_args()
     backend = Sharded32BBackend(
         args.model_path,
         config=GenerationConfig(
             max_input_tokens=4096,
             max_new_tokens=512,
-            temperature=0.0,
+            temperature=0.6,
+            top_p=0.95,
             retries=1,
             seed=42,
         ),
         prompt_dir=PROJECT_ROOT / "src/bian/prompts",
-        device_map="balanced",
-        max_memory={0: "44GiB", 1: "44GiB"},
+        device_map={"": 0} if args.precision != "bfloat16" else "balanced",
+        max_memory=(
+            {0: "44GiB"}
+            if args.precision != "bfloat16"
+            else {0: "44GiB", 1: "44GiB"}
+        ),
+        precision=args.precision,
     )
     started = time.perf_counter()
     backend.load()
