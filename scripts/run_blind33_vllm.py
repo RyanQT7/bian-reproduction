@@ -594,10 +594,6 @@ def main() -> int:
         taxonomy=taxonomy,
         minimum_rank_rounds=config["minimum_valid_stage2_rounds"],
     )
-    write_json(
-        args.output_dir / "prediction/predictions.schema_validation.json",
-        validation,
-    )
     if not validation["valid"]:
         raise ValidationError("; ".join(validation["errors"]))
     frozen = None
@@ -606,6 +602,7 @@ def main() -> int:
             predictions_path=args.output_dir / "prediction/predictions.jsonl",
             output_dir=args.output_dir / "prediction",
             validation=validation,
+            allow_identical_validation=True,
             manifest={
                 "evaluated_cases": 33,
                 "git_commit": inference_commit,
@@ -631,6 +628,11 @@ def main() -> int:
             },
         )
         Path(frozen["frozen_path"]).chmod(0o444)
+    else:
+        write_json(
+            args.output_dir / "prediction/predictions.schema_validation.json",
+            validation,
+        )
     total = time.perf_counter() - started
     write_json(
         args.output_dir / "prediction/logs/model_calls.json",

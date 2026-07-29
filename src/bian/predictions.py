@@ -276,6 +276,7 @@ def freeze_predictions(
     output_dir: Path,
     validation: dict[str, Any],
     manifest: dict[str, Any],
+    allow_identical_validation: bool = False,
 ) -> dict[str, Any]:
     if not validation.get("valid"):
         raise ValidationError("cannot freeze invalid predictions")
@@ -283,14 +284,22 @@ def freeze_predictions(
     checksum_path = output_dir / "predictions.sha256"
     validation_path = output_dir / "predictions.schema_validation.json"
     manifest_path = output_dir / "run_manifest.json"
-    for path in (frozen_path, checksum_path, validation_path, manifest_path):
+    for path in (frozen_path, checksum_path, manifest_path):
         if path.exists():
             raise FileExistsError(f"refusing to overwrite frozen artifact: {path}")
+    if validation_path.exists():
+        existing = json.loads(validation_path.read_text(encoding="utf-8"))
+        if not allow_identical_validation or existing != validation:
+            raise FileExistsError(
+                f"refusing to overwrite frozen artifact: {validation_path}"
+            )
     shutil.copyfile(predictions_path, frozen_path)
     checksum = sha256_file(frozen_path)
-    validation_path.write_text(
-        json.dumps(validation, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    if not validation_path.exists():
+        validation_path.write_text(
+            json.dumps(validation, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
     checksum_path.write_text(
         f"{checksum}  {frozen_path.name}\n", encoding="utf-8"
     )

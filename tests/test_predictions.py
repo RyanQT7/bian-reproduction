@@ -118,6 +118,25 @@ class PredictionValidationTests(unittest.TestCase):
                     manifest={"test": True},
                 )
 
+    def test_freeze_accepts_identical_prefreeze_validation_explicitly(self):
+        record = self.record()
+        validation = self.validate([record])
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "predictions.jsonl"
+            source.write_text(json.dumps(record) + "\n")
+            (root / "predictions.schema_validation.json").write_text(
+                json.dumps(validation, indent=2) + "\n"
+            )
+            result = freeze_predictions(
+                predictions_path=source,
+                output_dir=root,
+                validation=validation,
+                manifest={"test": True},
+                allow_identical_validation=True,
+            )
+            self.assertTrue(Path(result["frozen_path"]).is_file())
+
     def test_explicit_failed_prediction_is_valid_but_cannot_contain_answers(self):
         failed = {
             "incident_id": "incident-0001",
