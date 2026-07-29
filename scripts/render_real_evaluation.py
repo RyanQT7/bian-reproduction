@@ -18,6 +18,16 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--score-summary", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument(
+        "--result-label", default="Dual-7B Pipeline Validation Result"
+    )
+    parser.add_argument(
+        "--disclaimer",
+        default=(
+            "This is not a paper-equivalent BiAn result and is not directly "
+            "comparable with the paper's reported accuracy."
+        ),
+    )
     args = parser.parse_args()
     result = json.loads(args.score_summary.read_text(encoding="utf-8"))
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -38,6 +48,8 @@ def main() -> int:
             "incident_id",
             "root_node",
             "hit_rank",
+            "region_hit_rank",
+            "role_hit_rank",
             "localization_credit",
             "true_fault_type",
             "predicted_fault_type",
@@ -54,10 +66,9 @@ def main() -> int:
             {key: item.get(key) for key in fieldnames} for item in result["per_case"]
         )
     summary = [
-        "# Dual-7B Pipeline Validation Result",
+        f"# {args.result_label}",
         "",
-        "This is not a paper-equivalent BiAn result and is not directly comparable "
-        "with the paper's reported accuracy.",
+        args.disclaimer,
         "",
         f"- evaluated_cases: {result['evaluated_cases']}",
         f"- localization_score: {result['localization']['score_40']:.6f} / 40",
@@ -79,7 +90,7 @@ def main() -> int:
     failures = [
         "# Failure analysis",
         "",
-        "Dual-7B Pipeline Validation Result; not a paper reproduction result.",
+        f"{args.result_label}; not a paper reproduction result.",
         "",
     ]
     for item in result["failure_cases"]:

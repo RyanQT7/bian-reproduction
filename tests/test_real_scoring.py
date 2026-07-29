@@ -54,6 +54,10 @@ class RealScoringTests(unittest.TestCase):
         self.assertEqual(result["localization"]["score_40"], 40)
         self.assertEqual(result["classification"]["score_30"], 30)
         self.assertEqual(result["total_score_70"], 70)
+        self.assertEqual(result["localization"]["region_top1_accuracy"], 1)
+        self.assertEqual(result["localization"]["region_top5_accuracy"], 1)
+        self.assertEqual(result["localization"]["role_top1_accuracy"], 1)
+        self.assertEqual(result["localization"]["role_top5_accuracy"], 1)
 
     def test_rank_and_category_partial_credit(self):
         truth = [self.truth(1)]

@@ -28,9 +28,18 @@ def main() -> int:
     parser.add_argument("--bundle-root", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--rank-rounds", type=int, default=3)
+    parser.add_argument(
+        "--allow-variable-rank-rounds",
+        action="store_true",
+        help="Accept each successful localization with its recorded valid round count.",
+    )
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--small-model", required=True)
     parser.add_argument("--large-model", required=True)
+    parser.add_argument(
+        "--git-commit",
+        help="Inference commit to record; defaults to the current repository HEAD.",
+    )
     parser.add_argument(
         "--model-configuration", default="dual_7b_pipeline_validation"
     )
@@ -38,6 +47,16 @@ def main() -> int:
         "--result-label", default="Dual-7B Pipeline Validation Result"
     )
     parser.add_argument("--development-dataset", action="store_true")
+    parser.add_argument(
+        "--stage1-large-model-replaced-by-7b",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument(
+        "--stage2-large-model-replaced-by-7b",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
     args = parser.parse_args()
     incidents = load_jsonl(args.bundle_root / "experiment" / "incidents.jsonl")
     inventory = json.loads(
@@ -52,17 +71,21 @@ def main() -> int:
         expected_incident_ids={item["incident_id"] for item in incidents},
         candidate_node_ids={item["node_id"] for item in inventory},
         taxonomy=taxonomy,
-        expected_rank_rounds=args.rank_rounds,
+        expected_rank_rounds=(
+            None if args.allow_variable_rank_rounds else args.rank_rounds
+        ),
     )
     if not validation["valid"]:
         raise ValidationError("; ".join(validation["errors"]))
-    commit = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
+    commit = args.git_commit
+    if commit is None:
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
     prompt_digest = hashlib.sha256()
     for prompt_path in sorted((PROJECT_ROOT / "src/bian/prompts").glob("*.txt")):
         prompt_digest.update(prompt_path.name.encode())
@@ -90,8 +113,12 @@ def main() -> int:
             "strict_blind_evaluation": False if args.development_dataset else None,
             "ground_truth_used_for_post_run_diagnostics": args.development_dataset,
             "ground_truth_available_to_inference": False,
-            "stage1_large_model_replaced_by_7b": True,
-            "stage2_large_model_replaced_by_7b": True,
+            "stage1_large_model_replaced_by_7b": (
+                args.stage1_large_model_replaced_by_7b
+            ),
+            "stage2_large_model_replaced_by_7b": (
+                args.stage2_large_model_replaced_by_7b
+            ),
             "prompt_sha256": prompt_digest.hexdigest(),
             "dependencies": dependencies,
         },

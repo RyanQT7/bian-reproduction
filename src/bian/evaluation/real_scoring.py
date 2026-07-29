@@ -72,6 +72,8 @@ def score_predictions(
 
     per_case = []
     top_hits = Counter()
+    region_top_hits = Counter()
+    role_top_hits = Counter()
     reciprocal_rank_sum = 0.0
     localization_credit_sum = 0.0
     classification_credit_sum = 0.0
@@ -99,6 +101,8 @@ def score_predictions(
         region_id = "-".join(parts[:2])
         role = "-".join(parts[2:])
         hit_rank = None
+        region_hit_rank = None
+        role_hit_rank = None
         localization_credit = 0.0
         predicted_type = MISSING_LABEL
         predicted_category = MISSING_LABEL
@@ -118,6 +122,17 @@ def score_predictions(
                 elif root_node in node_ids:
                     hit_rank = node_ids.index(root_node) + 1
                     localization_credit = LOCALIZATION_WEIGHTS[hit_rank]
+                if len(node_ids) == 5 and len(set(node_ids)) == 5:
+                    predicted_regions = [
+                        "-".join(node_id.split("-")[:2]) for node_id in node_ids
+                    ]
+                    predicted_roles = [
+                        "-".join(node_id.split("-")[2:]) for node_id in node_ids
+                    ]
+                    if region_id in predicted_regions:
+                        region_hit_rank = predicted_regions.index(region_id) + 1
+                    if role in predicted_roles:
+                        role_hit_rank = predicted_roles.index(role) + 1
             predicted_type = prediction.get("predicted_fault_type") or MISSING_LABEL
             predicted_category = (
                 prediction.get("predicted_fault_category") or MISSING_LABEL
@@ -135,6 +150,14 @@ def score_predictions(
             for k in (1, 2, 3, 5):
                 if hit_rank <= k:
                     top_hits[k] += 1
+        for rank, counter in (
+            (region_hit_rank, region_top_hits),
+            (role_hit_rank, role_top_hits),
+        ):
+            if rank is not None:
+                for k in (1, 5):
+                    if rank <= k:
+                        counter[k] += 1
         localization_credit_sum += localization_credit
         localization_by_role[role].append(localization_credit)
         localization_by_region[region_id].append(localization_credit)
@@ -159,6 +182,8 @@ def score_predictions(
                 "incident_id": incident_id,
                 "root_node": root_node,
                 "hit_rank": hit_rank,
+                "region_hit_rank": region_hit_rank,
+                "role_hit_rank": role_hit_rank,
                 "localization_credit": localization_credit,
                 "true_fault_type": true_type,
                 "predicted_fault_type": predicted_type,
@@ -189,6 +214,10 @@ def score_predictions(
             "top3_accuracy": top_hits[3] / case_count,
             "top5_accuracy": top_hits[5] / case_count,
             "mean_reciprocal_rank": reciprocal_rank_sum / case_count,
+            "region_top1_accuracy": region_top_hits[1] / case_count,
+            "region_top5_accuracy": region_top_hits[5] / case_count,
+            "role_top1_accuracy": role_top_hits[1] / case_count,
+            "role_top5_accuracy": role_top_hits[5] / case_count,
             "by_root_role": {
                 key: {
                     "case_count": len(values),
