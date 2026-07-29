@@ -8,10 +8,19 @@ from bian.models.structured_output import (
     validate_stage1,
     validate_stage2,
 )
-from bian.models.dual_7b_backend import Dual7BBackend, GenerationConfig
+from bian.models.dual_7b_backend import (
+    Dual7BBackend,
+    GenerationConfig,
+    _has_complete_json,
+)
 
 
 class StructuredOutputTests(unittest.TestCase):
+    def test_json_completion_detection(self):
+        self.assertTrue(_has_complete_json('{"status":"ok"}'))
+        self.assertTrue(_has_complete_json('<think>x</think>{"status":"ok"}'))
+        self.assertFalse(_has_complete_json('{"status":'))
+
     def test_thinking_is_separated(self):
         thoughts, answer = strip_thinking('<think>hidden</think>{"ok":true}')
         self.assertEqual(thoughts, "hidden")

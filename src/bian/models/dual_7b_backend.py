@@ -12,6 +12,43 @@ from bian.data.validators import ValidationError
 from bian.models.structured_output import parse_strict_json, strip_thinking
 
 
+def _has_complete_json(text: str) -> bool:
+    """Return true when text ends after one syntactically complete JSON object."""
+    candidate = text.strip()
+    if "</think>" in candidate:
+        candidate = candidate.rsplit("</think>", 1)[1].strip()
+    if candidate.startswith("```json"):
+        candidate = candidate[len("```json") :].lstrip()
+    elif candidate.startswith("```"):
+        candidate = candidate[len("```") :].lstrip()
+    start = candidate.find("{")
+    if start < 0:
+        return False
+    try:
+        _value, end = json.JSONDecoder().raw_decode(candidate[start:])
+    except json.JSONDecodeError:
+        return False
+    trailing = candidate[start + end :].strip()
+    return trailing in {"", "```"}
+
+
+def _json_stopping_criteria(tokenizer: Any, prompt_length: int):
+    from transformers import StoppingCriteria
+
+    class JsonObjectComplete(StoppingCriteria):
+        def __call__(self, input_ids, scores, **kwargs):
+            return all(
+                _has_complete_json(
+                    tokenizer.decode(
+                        row[prompt_length:], skip_special_tokens=True
+                    )
+                )
+                for row in input_ids
+            )
+
+    return JsonObjectComplete()
+
+
 @dataclass(frozen=True)
 class GenerationConfig:
     max_input_tokens: int = 4096
@@ -114,7 +151,10 @@ class Dual7BBackend:
             )
             # Close the R1 reasoning channel before generation. Any emitted thinking
             # is still separated and logged by parse_strict_json.
-            rendered += "<think>\n</think>\n"
+            rendered += (
+                "</think>\n" if rendered.rstrip().endswith("<think>") else
+                "<think>\n</think>\n"
+            )
             inputs = self._tokenizer(
                 rendered,
                 return_tensors="pt",
@@ -140,6 +180,9 @@ class Dual7BBackend:
                     top_p=self.config.top_p if self.config.temperature > 0 else None,
                     pad_token_id=self._tokenizer.eos_token_id,
                     use_cache=True,
+                    stopping_criteria=[
+                        _json_stopping_criteria(self._tokenizer, input_tokens)
+                    ],
                 )
             torch.cuda.synchronize()
             elapsed = time.perf_counter() - started
@@ -219,7 +262,14 @@ class Dual7BBackend:
                     tokenize=False,
                     add_generation_prompt=True,
                 )
-                rendered_batch.append(rendered + "<think>\n</think>\n")
+                rendered_batch.append(
+                    rendered
+                    + (
+                        "</think>\n"
+                        if rendered.rstrip().endswith("<think>")
+                        else "<think>\n</think>\n"
+                    )
+                )
             inputs = self._tokenizer(
                 rendered_batch, return_tensors="pt", padding=True, truncation=False
             ).to("cuda:0")
@@ -241,6 +291,9 @@ class Dual7BBackend:
                     do_sample=False,
                     pad_token_id=self._tokenizer.pad_token_id,
                     use_cache=True,
+                    stopping_criteria=[
+                        _json_stopping_criteria(self._tokenizer, padded_length)
+                    ],
                 )
             torch.cuda.synchronize()
             elapsed = time.perf_counter() - started
