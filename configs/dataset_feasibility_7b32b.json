@@ -1,0 +1,30 @@
+{
+  "_provenance": "implementation-choice",
+  "result_label": "7B + 32B Dataset Feasibility Validation",
+  "experiment_purpose": "dataset_feasibility_validation",
+  "paper_reproduction": false,
+  "paper_model_equivalent": false,
+  "development_dataset": true,
+  "strict_blind_evaluation": false,
+  "stage1_model": "7b",
+  "stage2_model": "32b",
+  "classification_model": "32b",
+  "stage1_frozen": true,
+  "precision": "bfloat16",
+  "physical_gpus": [2, 3],
+  "cuda_visible_devices": "2,3",
+  "stage2_seeds": [32001, 32002, 32003],
+  "stage2_temperature": 0.15,
+  "stage2_top_p": 0.9,
+  "stage2_max_input_tokens": 16384,
+  "stage2_max_new_tokens": 4096,
+  "classification_max_new_tokens": 2048,
+  "structured_retries": 1,
+  "stage2_weights": {
+    "local_anomaly_score": 0.30,
+    "temporal_precedence_score": 0.25,
+    "topology_upstream_score": 0.25,
+    "fault_pattern_compatibility_score": 0.20,
+    "symptom_likelihood_penalty": 0.15
+  }
+}

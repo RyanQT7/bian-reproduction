@@ -1,0 +1,10 @@
+Independently audit the supplied Cxx root-cause hypotheses using the same evidence.
+Consider direct anomaly strength, propagation timing, upstream topology, compatible
+fault patterns, recovery, data quality, and whether a node is merely symptomatic.
+Never output node IDs or fault types. Score every Cxx once and return JSON only:
+{"candidates":[{"candidate_id":"C01","local_anomaly_score":0.0,
+"temporal_precedence_score":0.0,"topology_upstream_score":0.0,
+"fault_pattern_compatibility_score":0.0,"symptom_likelihood":0.0,
+"supporting_evidence_ids":[],"counter_evidence_ids":[],
+"concise_reason":"brief auditable reason"}]}
+All scores are finite in [0,1]; all evidence IDs must be supplied IDs.

@@ -107,7 +107,46 @@ def validate_predictions(
                 errors.append(f"{incident_id}: normalized Top5 scores must sum to 1")
         except (ValidationError, AttributeError) as exc:
             errors.append(f"{incident_id}: {exc}")
-        fault_top3 = record.get("fault_type_top3")
+        classification_status = record.get("classification_status", "success")
+        if classification_status == "classification_failed":
+            forbidden = {
+                "predicted_fault_type",
+                "predicted_fault_category",
+                "fault_type_top3",
+            } & set(record)
+            if forbidden:
+                errors.append(
+                    f"{incident_id}: failed classification contains answer fields "
+                    f"{sorted(forbidden)}"
+                )
+            if not isinstance(record.get("classification_error"), str):
+                errors.append(
+                    f"{incident_id}: classification_failed requires classification_error"
+                )
+            fault_top3 = None
+        elif classification_status == "success":
+            fault_top3 = record.get("fault_type_top3")
+        else:
+            errors.append(
+                f"{incident_id}: unknown classification_status {classification_status!r}"
+            )
+            fault_top3 = None
+        if classification_status == "classification_failed":
+            rank_data = record.get("rank_of_ranks")
+            if not isinstance(rank_data, dict):
+                errors.append(f"{incident_id}: rank_of_ranks is required")
+            else:
+                rounds = rank_data.get("rounds")
+                raw_rankings = rank_data.get("raw_rankings")
+                if expected_rank_rounds is not None and rounds != expected_rank_rounds:
+                    errors.append(
+                        f"{incident_id}: expected {expected_rank_rounds} rank rounds"
+                    )
+                if not isinstance(raw_rankings, list) or len(raw_rankings) != rounds:
+                    errors.append(
+                        f"{incident_id}: raw ranking count must equal rounds"
+                    )
+            continue
         if not isinstance(fault_top3, list) or len(fault_top3) != 3:
             errors.append(f"{incident_id}: fault_type_top3 must contain exactly 3 items")
             continue
