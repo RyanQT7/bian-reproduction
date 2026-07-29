@@ -45,7 +45,7 @@ def compact_candidate(stage1: dict, evidence: dict) -> dict:
             stage1.get("supporting_evidence_ids", [])
             + stage1.get("counter_evidence_ids", [])
         )
-    )[:6]
+    )[:3]
     return {
         "candidate_id": stage1["candidate_id"],
         "device_role": stage1["device_role"],
@@ -74,12 +74,9 @@ def compact_candidate(stage1: dict, evidence: dict) -> dict:
                     "metric_name",
                     "source_type",
                     "first_change_time",
-                    "peak_time",
-                    "recovery_time",
                     "pre_value",
                     "fault_value",
                     "post_value",
-                    "absolute_delta",
                     "stable_change_score",
                     "direction",
                     "status_transition",
