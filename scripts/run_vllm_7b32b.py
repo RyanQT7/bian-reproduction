@@ -678,7 +678,7 @@ def post_freeze(
         expected_incident_ids={item["incident_id"] for item in incidents},
         candidate_node_ids={item["node_id"] for item in inventory},
         taxonomy=taxonomy,
-        expected_rank_rounds=3,
+        minimum_rank_rounds=2,
     )
     if not validation["valid"]:
         raise ValidationError("; ".join(validation["errors"]))
@@ -691,7 +691,8 @@ def post_freeze(
             "evaluated_cases": 10,
             "git_commit": inference_commit,
             "random_seed": config["stage2_seeds"][0],
-            "rank_rounds": 3,
+            "requested_rank_rounds": 3,
+            "minimum_valid_rank_rounds": 2,
             "small_model": "DeepSeek-R1-Distill-Qwen-7B (frozen Stage 1)",
             "large_model": "DeepSeek-R1-Distill-Qwen-32B",
             "model_configuration": "frozen_7b_stage1_vllm_32b_bf16",

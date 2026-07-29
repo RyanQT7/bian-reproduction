@@ -41,6 +41,7 @@ def validate_predictions(
     candidate_node_ids: set[str],
     taxonomy: list[dict[str, str]],
     expected_rank_rounds: int | None = None,
+    minimum_rank_rounds: int | None = None,
 ) -> dict[str, Any]:
     errors: list[str] = []
     ids = [record.get("incident_id") for record in records]
@@ -142,6 +143,17 @@ def validate_predictions(
                     errors.append(
                         f"{incident_id}: expected {expected_rank_rounds} rank rounds"
                     )
+                if (
+                    minimum_rank_rounds is not None
+                    and (
+                        not isinstance(rounds, int)
+                        or rounds < minimum_rank_rounds
+                    )
+                ):
+                    errors.append(
+                        f"{incident_id}: expected at least "
+                        f"{minimum_rank_rounds} rank rounds"
+                    )
                 if not isinstance(raw_rankings, list) or len(raw_rankings) != rounds:
                     errors.append(
                         f"{incident_id}: raw ranking count must equal rounds"
@@ -184,6 +196,17 @@ def validate_predictions(
             if expected_rank_rounds is not None and rounds != expected_rank_rounds:
                 errors.append(
                     f"{incident_id}: expected {expected_rank_rounds} rank rounds"
+                )
+            if (
+                minimum_rank_rounds is not None
+                and (
+                    not isinstance(rounds, int)
+                    or rounds < minimum_rank_rounds
+                )
+            ):
+                errors.append(
+                    f"{incident_id}: expected at least "
+                    f"{minimum_rank_rounds} rank rounds"
                 )
             if not isinstance(raw_rankings, list) or len(raw_rankings) != rounds:
                 errors.append(f"{incident_id}: raw ranking count must equal rounds")

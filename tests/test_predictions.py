@@ -62,6 +62,27 @@ class PredictionValidationTests(unittest.TestCase):
     def test_valid_prediction(self):
         self.assertTrue(self.validate([self.record()])["valid"])
 
+    def test_minimum_rank_rounds_accepts_two_and_rejects_one(self):
+        record = self.record()
+        record["rank_of_ranks"] = {
+            "rounds": 2,
+            "raw_rankings": record["rank_of_ranks"]["raw_rankings"][:2],
+        }
+        arguments = {
+            "expected_incident_ids": {"incident-0001"},
+            "candidate_node_ids": self.candidates,
+            "taxonomy": self.taxonomy,
+            "minimum_rank_rounds": 2,
+        }
+        self.assertTrue(validate_predictions([record], **arguments)["valid"])
+        record["rank_of_ranks"] = {
+            "rounds": 1,
+            "raw_rankings": record["rank_of_ranks"]["raw_rankings"][:1],
+        }
+        result = validate_predictions([record], **arguments)
+        self.assertFalse(result["valid"])
+        self.assertTrue(any("at least 2" in error for error in result["errors"]))
+
     def test_duplicate_incident_rejected(self):
         result = self.validate([self.record(), self.record()])
         self.assertFalse(result["valid"])
