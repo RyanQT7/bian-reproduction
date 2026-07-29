@@ -485,7 +485,14 @@ def main() -> int:
         if "/evaluation/" in lowered or "/review/" in lowered:
             raise ValueError("blind inference refuses evaluation/review paths")
     if args.output_dir.exists():
-        raise FileExistsError(f"refusing to overwrite {args.output_dir}")
+        allowed_existing = {"stage1_new", "logs", "checkpoint.json"}
+        existing = {path.name for path in args.output_dir.iterdir()}
+        unexpected = existing - allowed_existing
+        if unexpected:
+            raise FileExistsError(
+                f"refusing to overwrite {args.output_dir}; "
+                f"unexpected existing entries: {sorted(unexpected)}"
+            )
     config = json.loads(args.config.read_text())
     if config["precision"] != "bfloat16" or config["quantization"] is not None:
         raise ValidationError("blind runner requires unquantized BF16")
