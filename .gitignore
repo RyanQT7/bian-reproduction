@@ -26,6 +26,7 @@ secrets*
 configs/paths.yaml
 configs/paths.local.yaml
 *.local.yaml
+*.local.json
 
 # Real/private datasets
 data/real/*

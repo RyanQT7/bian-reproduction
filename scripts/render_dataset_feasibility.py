@@ -29,17 +29,23 @@ def node_region(node: str) -> str:
 def classification_metrics(records: list[dict], truths: dict[str, dict]) -> dict:
     top1 = top3 = category = 0
     per_case = []
-    for record in records:
-        truth = truths[record["incident_id"]]
-        predicted = record["predicted_fault_type"]
-        predicted_category = record["predicted_fault_category"]
-        types = [item["fault_type"] for item in record["fault_type_top3"]]
+    by_id = {record["incident_id"]: record for record in records}
+    for incident_id, truth in sorted(truths.items()):
+        record = by_id.get(incident_id, {})
+        predicted = record.get("predicted_fault_type", "__missing__")
+        predicted_category = record.get(
+            "predicted_fault_category", "__missing__"
+        )
+        types = [
+            item["fault_type"]
+            for item in record.get("fault_type_top3", [])
+        ]
         top1 += predicted == truth["fault_type"]
         top3 += truth["fault_type"] in types
         category += predicted_category == truth["fault_category"]
         per_case.append(
             {
-                "incident_id": record["incident_id"],
+                "incident_id": incident_id,
                 "true_fault_type": truth["fault_type"],
                 "predicted_fault_type": predicted,
                 "true_fault_category": truth["fault_category"],
@@ -47,9 +53,11 @@ def classification_metrics(records: list[dict], truths: dict[str, dict]) -> dict
                 "top3_hit": truth["fault_type"] in types,
             }
         )
-    count = len(records)
+    count = len(truths)
     return {
         "evaluated_cases": count,
+        "successful_classifications": len(by_id),
+        "failed_classifications": count - len(by_id),
         "fault_type_top1_accuracy": top1 / count,
         "fault_type_top3_hit_rate": top3 / count,
         "fault_category_accuracy": category / count,
@@ -111,9 +119,10 @@ def main() -> int:
         ranking = [item["node_id"] for item in stage1[incident_id]["ranking"]]
         s1_rank = ranking.index(root) + 1
         stage1_credit += stage1_weights.get(s1_rank, 0)
+        prediction = predictions.get(incident_id, {})
         top5 = [
             item["node_id"]
-            for item in predictions[incident_id].get("top5_root_causes", [])
+            for item in prediction.get("top5_root_causes", [])
         ]
         s2_rank = top5.index(root) + 1 if root in top5 else None
         comparable = s2_rank if s2_rank is not None else 73
@@ -219,6 +228,8 @@ def main() -> int:
         scores = {
             item["fault_type"]: item["aggregated_raw_score"] for item in items
         }
+        if truth_type not in scores or len(scores) < 2:
+            continue
         ranked = sorted(scores, key=lambda key: (-scores[key], key))
         true_score = scores[truth_type]
         best_other = max(
@@ -238,7 +249,17 @@ def main() -> int:
     with (feasibility / "fault_type_separability.csv").open(
         "w", newline=""
     ) as handle:
-        writer = csv.DictWriter(handle, fieldnames=separability_rows[0])
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "incident_id",
+                "fault_type",
+                "true_type_rank",
+                "true_type_score",
+                "best_other_score",
+                "score_margin",
+            ],
+        )
         writer.writeheader()
         writer.writerows(separability_rows)
 
