@@ -1,0 +1,10 @@
+{
+  "detection_start": "2026-07-28T05:30:00Z",
+  "onset_points": 2,
+  "clear_points": 2,
+  "same_device_merge_gap_seconds": 120,
+  "cross_device_compatibility_seconds": 120,
+  "extreme_high_multiplier": 2.5,
+  "minimum_scale": 1e-6,
+  "max_top_indicators": 3
+}

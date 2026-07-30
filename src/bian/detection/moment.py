@@ -10,9 +10,9 @@ import torch
 
 from .aggregation import (
     complete_linkage_clusters,
-    hysteresis_intervals,
-    merge_same_device_intervals,
+    merge_intervals_by_timestamp,
     robust_scale,
+    sampled_hysteresis_intervals,
     temporal_gap_seconds,
 )
 
@@ -119,21 +119,23 @@ def detect(parquet: str | Path, output: str | Path, config: dict, device: str,
         for record in metric_interval_records:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
     device_spans, before_records, after_records = [], [], []
+    detection_start = pd.Timestamp(config.get("detection_start", config["calibration_end"]))
+    same_device_gap = float(config.get("same_device_merge_gap_seconds", 120))
+    cross_device_gap = float(config.get("cross_device_compatibility_seconds", 120))
     for dev, d in scores.groupby("device"):
         pivot = d.pivot_table(index="timestamp", columns="metric", values="score", aggfunc="mean")
         high = d.groupby("metric").high.first().reindex(pivot.columns)
-        binary = d.groupby("metric").binary.first().reindex(pivot.columns)
+        low = d.groupby("metric").low.first().reindex(pivot.columns)
         ratios = pivot.divide(high.replace(0, config["minimum_scale"]), axis=1)
         above = (ratios >= 1).sum(axis=1)
         extreme = ratios.max(axis=1) >= 2.5
-        flips = pivot.loc[:, binary].diff().abs().gt(0).rolling(2, min_periods=2).sum().ge(2).any(axis=1) if binary.any() else pd.Series(False, index=pivot.index)
-        trigger = (above >= 2) | extreme | flips
+        trigger = (above >= 2) | extreme
+        low_active = (pivot.ge(low, axis=1).sum(axis=1) >= 2) | extreme
         top3 = ratios.apply(lambda row: row.nlargest(min(3, row.notna().sum())).mean(), axis=1)
-        before = hysteresis_intervals(
-            trigger.to_numpy(), pivot.index.to_numpy(),
-            config["onset_seconds"], config["clear_seconds"])
-        after = merge_same_device_intervals(
-            before, pivot.index.to_numpy(), config["merge_gap_seconds"])
+        before = sampled_hysteresis_intervals(
+            trigger.to_numpy(), low_active.to_numpy(), pivot.index.to_numpy(),
+            detection_start, onset_points=2, clear_points=2)
+        after = merge_intervals_by_timestamp(before, same_device_gap)
         for i, (start, end) in enumerate(before, 1):
             before_records.append({
                 "interval_id": f"{dev}:before:{i}", "device": dev,
@@ -162,7 +164,7 @@ def detect(parquet: str | Path, output: str | Path, config: dict, device: str,
         with (artifact_dir / name).open("w", encoding="utf-8") as f:
             for row in rows:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
-    clusters = complete_linkage_clusters(device_spans, config["merge_gap_seconds"])
+    clusters = complete_linkage_clusters(device_spans, cross_device_gap)
     with (artifact_dir / "cross_device_merge_lineage.jsonl").open("w", encoding="utf-8") as f:
         for cluster in clusters:
             lineage = {
@@ -177,7 +179,7 @@ def detect(parquet: str | Path, output: str | Path, config: dict, device: str,
             }
             f.write(json.dumps(lineage, ensure_ascii=False) + "\n")
     no_transitive_chain = all(
-        temporal_gap_seconds(a, b) <= config["merge_gap_seconds"]
+        temporal_gap_seconds(a, b) <= cross_device_gap
         for cluster in clusters for i, a in enumerate(cluster["members"])
         for b in cluster["members"][i+1:])
     output = Path(output)

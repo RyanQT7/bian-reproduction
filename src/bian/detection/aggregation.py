@@ -61,6 +61,68 @@ def merge_same_device_intervals(
     return merged
 
 
+def sampled_hysteresis_intervals(
+    start_mask: np.ndarray,
+    low_active_mask: np.ndarray,
+    timestamps: np.ndarray,
+    detection_start: pd.Timestamp,
+    onset_points: int = 2,
+    clear_points: int = 2,
+) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
+    """Point-count hysteresis for sampled data; calibration is excluded by timestamp."""
+    if len(start_mask) != len(low_active_mask) or len(start_mask) != len(timestamps):
+        raise ValueError("state masks and timestamps must have equal length")
+    onset_points, clear_points = max(2, onset_points), max(2, clear_points)
+    spans: list[tuple[pd.Timestamp, pd.Timestamp]] = []
+    active = False
+    start_run = clear_run = 0
+    start_index: int | None = None
+    for i, raw_ts in enumerate(timestamps):
+        ts = pd.Timestamp(raw_ts)
+        if ts < detection_start:
+            active = False
+            start_run = clear_run = 0
+            start_index = None
+            continue
+        if not active:
+            start_run = start_run + 1 if bool(start_mask[i]) else 0
+            if start_run >= onset_points:
+                active = True
+                start_index = i - onset_points + 1
+                clear_run = 0
+        else:
+            if bool(low_active_mask[i]):
+                clear_run = 0
+            else:
+                clear_run += 1
+                if clear_run >= clear_points:
+                    end_index = i - clear_points
+                    if start_index is not None and end_index >= start_index:
+                        spans.append((
+                            pd.Timestamp(timestamps[start_index]),
+                            pd.Timestamp(timestamps[end_index]),
+                        ))
+                    active = False
+                    start_run = clear_run = 0
+                    start_index = None
+    if active and start_index is not None:
+        spans.append((pd.Timestamp(timestamps[start_index]), pd.Timestamp(timestamps[-1])))
+    return spans
+
+
+def merge_intervals_by_timestamp(
+    spans: list[tuple[pd.Timestamp, pd.Timestamp]], merge_gap_seconds: float = 120.0
+) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
+    """Same-device merge using only real timestamp gaps, never inferred point distance."""
+    merged: list[tuple[pd.Timestamp, pd.Timestamp]] = []
+    for start, end in sorted(spans):
+        if merged and (start - merged[-1][1]).total_seconds() <= merge_gap_seconds:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
 def temporal_gap_seconds(a: dict, b: dict) -> float:
     """Zero for overlap, otherwise the direct boundary-to-boundary gap."""
     if a["end"] < b["start"]:
