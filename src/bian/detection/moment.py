@@ -8,7 +8,13 @@ import numpy as np
 import pandas as pd
 import torch
 
-from .aggregation import intervals, robust_scale
+from .aggregation import (
+    complete_linkage_clusters,
+    hysteresis_intervals,
+    merge_same_device_intervals,
+    robust_scale,
+    temporal_gap_seconds,
+)
 
 
 def load_model(model_id: str, revision: str, device: str):
@@ -58,6 +64,7 @@ def _reconstruct(model, seq_len: int, arrays: list[np.ndarray], batch_size: int,
 
 def detect(parquet: str | Path, output: str | Path, config: dict, device: str,
            smoke_end: str | None = None) -> dict:
+    torch.cuda.reset_peak_memory_stats()
     frame = pd.read_parquet(parquet)
     if smoke_end:
         frame = frame[frame.timestamp < pd.Timestamp(smoke_end)]
@@ -73,14 +80,6 @@ def detect(parquet: str | Path, output: str | Path, config: dict, device: str,
         metadata.append((dev, metric, binary))
     model, seq_len = load_model(config["model_id"], config["revision"], device)
     errors = _reconstruct(model, seq_len, values, config["batch_size"], device)
-    if smoke_end:
-        result = {"series": len(series), "window_length": seq_len,
-                  "nan_errors": int(sum(np.isnan(x).sum() for x in errors)),
-                  "model_eval": not model.training, "device": device}
-        del model
-        torch.cuda.empty_cache()
-        Path(output).write_text(json.dumps(result, indent=2), encoding="utf-8")
-        return result
     records = []
     for ts, err, (dev, metric, binary) in zip(series, errors, metadata):
         cal_mask = pd.DatetimeIndex(ts) < calibration_end
@@ -93,7 +92,33 @@ def detect(parquet: str | Path, output: str | Path, config: dict, device: str,
             if np.isfinite(e):
                 records.append((t, dev, metric, e, high, low, binary))
     scores = pd.DataFrame(records, columns=["timestamp","device","metric","score","high","low","binary"])
-    device_spans = []
+    artifact_dir = Path(output).parent
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    scores.to_parquet(artifact_dir / "metric_point_scores.parquet", index=False,
+                      compression="zstd")
+    metric_interval_records = []
+    for (dev, metric), group in scores.groupby(["device", "metric"], sort=True):
+        group = group.sort_values("timestamp")
+        hit = group.score.to_numpy() >= group.high.to_numpy()
+        start = None
+        for i, value in enumerate(hit):
+            if value and start is None:
+                start = i
+            if start is not None and (not value or i == len(hit)-1):
+                stop = i-1 if not value else i
+                metric_interval_records.append({
+                    "device": dev, "metric": metric,
+                    "start_time": pd.Timestamp(group.timestamp.iloc[start]).isoformat(),
+                    "end_time": pd.Timestamp(group.timestamp.iloc[stop]).isoformat(),
+                    "point_count": stop-start+1,
+                    "max_score": float(group.score.iloc[start:stop+1].max()),
+                    "high": float(group.high.iloc[0]), "formation": "contiguous_points_score_ge_high",
+                })
+                start = None
+    with (artifact_dir / "metric_intervals.jsonl").open("w", encoding="utf-8") as f:
+        for record in metric_interval_records:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    device_spans, before_records, after_records = [], [], []
     for dev, d in scores.groupby("device"):
         pivot = d.pivot_table(index="timestamp", columns="metric", values="score", aggfunc="mean")
         high = d.groupby("metric").high.first().reindex(pivot.columns)
@@ -104,31 +129,78 @@ def detect(parquet: str | Path, output: str | Path, config: dict, device: str,
         flips = pivot.loc[:, binary].diff().abs().gt(0).rolling(2, min_periods=2).sum().ge(2).any(axis=1) if binary.any() else pd.Series(False, index=pivot.index)
         trigger = (above >= 2) | extreme | flips
         top3 = ratios.apply(lambda row: row.nlargest(min(3, row.notna().sum())).mean(), axis=1)
-        for start, end in intervals(trigger.to_numpy(), pivot.index.to_numpy(),
-                                    config["onset_seconds"], config["clear_seconds"],
-                                    config["merge_gap_seconds"]):
+        before = hysteresis_intervals(
+            trigger.to_numpy(), pivot.index.to_numpy(),
+            config["onset_seconds"], config["clear_seconds"])
+        after = merge_same_device_intervals(
+            before, pivot.index.to_numpy(), config["merge_gap_seconds"])
+        for i, (start, end) in enumerate(before, 1):
+            before_records.append({
+                "interval_id": f"{dev}:before:{i}", "device": dev,
+                "start_time": start.isoformat(), "end_time": end.isoformat(),
+                "stage": "after_onset_and_clear_before_same_device_merge"})
+        for i, (start, end) in enumerate(after, 1):
             segment = (pivot.index >= start) & (pivot.index <= end)
             indicators = ratios.loc[segment].max().nlargest(3).index.tolist()
-            device_spans.append({"device": dev, "start": start, "end": end,
+            interval_id = f"{dev}:after:{i}"
+            member_before = [
+                x["interval_id"] for x in before_records
+                if x["device"] == dev and pd.Timestamp(x["start_time"]) >= start
+                and pd.Timestamp(x["end_time"]) <= end]
+            span = {"interval_id": interval_id, "device": dev, "start": start, "end": end,
                                  "max_device_score": float(top3.loc[segment].max()),
-                                 "top_indicators": indicators})
-    # Deterministic temporal union: overlapping/nearby device incidents form network events.
-    events = []
-    for span in sorted(device_spans, key=lambda x: (x["start"], x["end"], x["device"])):
-        if events and span["start"] <= events[-1]["end"] + pd.Timedelta(seconds=60):
-            events[-1]["end"] = max(events[-1]["end"], span["end"])
-            events[-1]["devices"].append(span["device"])
-            events[-1]["top_indicators"] = sorted(set(events[-1]["top_indicators"] + span["top_indicators"]))
-        else:
-            events.append({"start": span["start"], "end": span["end"], "devices": [span["device"]],
-                           "top_indicators": span["top_indicators"]})
+                                 "top_indicators": indicators}
+            device_spans.append(span)
+            after_records.append({
+                "interval_id": interval_id, "device": dev, "start_time": start.isoformat(),
+                "end_time": end.isoformat(), "member_before_merge_ids": member_before,
+                "max_device_score": span["max_device_score"], "top_indicators": indicators})
+    for name, rows in (
+        ("device_intervals_before_merge.jsonl", before_records),
+        ("device_intervals_after_same_device_merge.jsonl", after_records),
+    ):
+        with (artifact_dir / name).open("w", encoding="utf-8") as f:
+            for row in rows:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    clusters = complete_linkage_clusters(device_spans, config["merge_gap_seconds"])
+    with (artifact_dir / "cross_device_merge_lineage.jsonl").open("w", encoding="utf-8") as f:
+        for cluster in clusters:
+            lineage = {
+                "cluster_id": cluster["cluster_id"],
+                "boundary_after": {
+                    "start": cluster["start"].isoformat(), "end": cluster["end"].isoformat()},
+                "member_intervals": [
+                    {"interval_id": x["interval_id"], "device": x["device"],
+                     "start_time": x["start"].isoformat(), "end_time": x["end"].isoformat()}
+                    for x in cluster["members"]],
+                "joins": cluster["joins"],
+            }
+            f.write(json.dumps(lineage, ensure_ascii=False) + "\n")
+    no_transitive_chain = all(
+        temporal_gap_seconds(a, b) <= config["merge_gap_seconds"]
+        for cluster in clusters for i, a in enumerate(cluster["members"])
+        for b in cluster["members"][i+1:])
     output = Path(output)
     with output.open("w", encoding="utf-8") as f:
-        for i, event in enumerate(events, 1):
-            record = {"incident_id": f"moment-{i:04d}", "start_time": event["start"].isoformat(),
-                      "end_time": event["end"].isoformat(), "devices": sorted(set(event["devices"])),
-                      "top_indicators": event["top_indicators"]}
+        for i, cluster in enumerate(clusters, 1):
+            members = cluster["members"]
+            record = {"incident_id": f"moment-{i:04d}", "cluster_id": cluster["cluster_id"],
+                      "start_time": cluster["start"].isoformat(), "end_time": cluster["end"].isoformat(),
+                      "devices": sorted({x["device"] for x in members}),
+                      "top_indicators": sorted({m for x in members for m in x["top_indicators"]}),
+                      "member_interval_ids": [x["interval_id"] for x in members],
+                      "max_device_score": max(x["max_device_score"] for x in members)}
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    peak = int(torch.cuda.max_memory_allocated())
     del model
     torch.cuda.empty_cache()
-    return {"predictions": len(events), "series": len(series), "window_length": seq_len}
+    result = {"predictions": len(clusters), "series": len(series), "window_length": seq_len,
+              "metric_intervals": len(metric_interval_records),
+              "device_intervals_before_merge": len(before_records),
+              "device_intervals_after_same_device_merge": len(after_records),
+              "no_cross_device_transitive_chain": no_transitive_chain,
+              "peak_gpu_memory_bytes": peak, "model_eval": True}
+    if smoke_end:
+        Path(output).with_name("smoke_report.json").write_text(
+            json.dumps(result, indent=2), encoding="utf-8")
+    return result
