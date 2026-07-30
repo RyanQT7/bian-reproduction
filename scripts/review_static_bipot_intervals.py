@@ -41,7 +41,10 @@ def main():
     score=json.loads((rdir/'detection_score.json').read_text()); match=score.get('matches',[{}])[0]
     audit={'ground_truth_count':len(gt),'short_count':len(short),'long_count':len(long_all),'long_network_count':len(long),'truth_covered_by_long':sum(x['covered_by_long_interval']=='Y' for x in summ),'truth_covered_by_short':sum(x['covered_by_short_detected']=='Y' for x in summ),'score':score}
     (out/'audit_summary.json').write_text(json.dumps(audit,indent=2,default=str))
-    (out/'scoring_zero_tp_audit.md').write_text(f"# Scoring zero-time audit\n\nThe sole TP has IoU {match.get('iou')} but start delta {match.get('start_delta_seconds')} seconds and end delta {match.get('end_delta_seconds')} seconds. Its predicted start is earlier than truth, so S_acc and S_time are 0 under the frozen scoring rule.\n")
+    zero=[m for m in score.get('matches',[]) if m.get('S_time',1)==0]; lines=['# Scoring zero-time audit','',f"Formal matches: {len(score.get('matches',[]))}; matches with zero S_time: {len(zero)}."]
+    for m in score.get('matches',[]): lines.append(f"- prediction {m.get('prediction')} vs truth {m.get('truth')}: IoU={m.get('iou')}, start_delta={m.get('start_delta_seconds')}s, end_delta={m.get('end_delta_seconds')}s, S_time={m.get('S_time')}.")
+    lines.append(''); lines.append('A zero S_time occurs when the frozen timing-accuracy rule yields zero, including an early prediction or sufficiently large boundary error.')
+    (out/'scoring_zero_tp_audit.md').write_text('\n'.join(lines)+'\n')
     start=iso(a.start_time); end=iso(a.end_time); pdf=out/'static_bipot_interval_review.pdf'
     with PdfPages(pdf) as pp:
         fig,axs=plt.subplots(3,1,figsize=(14,8),sharex=True); labels=['Ground Truth All Cases','Detected Short Intervals','Persistent Long Intervals (>35 min)']; sets=[[iv(g) for g in gt],[v for _,v in shorts],[v for _,v in longs]]; cols=['tab:red','tab:blue','tab:orange']
