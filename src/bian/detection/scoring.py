@@ -29,7 +29,7 @@ def score(predictions: list[dict], truth: list[dict], denominator: int = 33) -> 
         s_acc = max(0.0, 1.0 - (abs(ds)+abs(de))/120.0)
         s_time = 0.0 if ps < ts else .6 + .4*s_acc
         total += s_time; used_p.add(i); used_t.add(j)
-        matches.append({"prediction": i, "truth": j, "iou": weights[i,j],
+        matches.append({"prediction": int(i), "truth": int(j), "iou": float(weights[i,j]),
                         "start_delta_seconds": ds, "end_delta_seconds": de, "S_time": s_time})
     tp, fp, fn = len(matches), len(pb)-len(matches), len(tb)-len(matches)
     precision = tp/(tp+fp) if tp+fp else 0.0
@@ -38,5 +38,6 @@ def score(predictions: list[dict], truth: list[dict], denominator: int = 33) -> 
     alpha = 1.0 if precision == 1 else precision**1.2
     return {"TP": tp, "FP": fp, "FN": fn, "Precision": precision, "Recall": recall,
             "F1": f1, "alpha": alpha, "detection_score_30": total/denominator*alpha*30,
-            "matches": matches, "unmatched_predictions": sorted(set(range(len(pb)))-used_p),
-            "unmatched_truth": sorted(set(range(len(tb)))-used_t)}
+            "matches": matches,
+            "unmatched_predictions": [int(x) for x in sorted(set(range(len(pb)))-used_p)],
+            "unmatched_truth": [int(x) for x in sorted(set(range(len(tb)))-used_t)]}
