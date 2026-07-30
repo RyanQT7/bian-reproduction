@@ -1,0 +1,17 @@
+{
+  "model_id": "AutonLab/MOMENT-1-large",
+  "revision": "ca58581bc7bea2ebed4e80dc0a3e4b8b609c6ecc",
+  "mode": "zero_shot_reconstruction",
+  "calibration_start": "2026-07-28T04:00:00Z",
+  "calibration_end": "2026-07-28T05:30:00Z",
+  "high_quantile": 0.995,
+  "low_quantile": 0.99,
+  "batch_size": 32,
+  "window_stride_fraction": 0.5,
+  "onset_points": 2,
+  "clear_points": 2,
+  "merge_gap_seconds": 120,
+  "persistent_interval_minutes": 35,
+  "single_continuous_extreme_trigger": false,
+  "development_experiment": true
+}
