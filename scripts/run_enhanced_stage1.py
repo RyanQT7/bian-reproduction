@@ -50,7 +50,7 @@ def main() -> int:
     rankings_path = args.output_dir / "full_rankings.jsonl"
     shortlist_path = args.output_dir / "shortlist.jsonl"
     analyses_path = args.output_dir / "device_analyses.jsonl"
-    input_paths = sorted(args.input_root.glob("incident-*/incident_input.json"))
+    input_paths = sorted(args.input_root.glob("*/incident_input.json"))
     if args.incident_id:
         input_paths = [
             path for path in input_paths if path.parent.name == args.incident_id
