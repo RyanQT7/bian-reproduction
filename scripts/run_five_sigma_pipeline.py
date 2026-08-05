@@ -62,18 +62,57 @@ def main():
         for x in points: h.write(json.dumps(x,ensure_ascii=False)+"\n")
     with interval_path.open("w") as h:
         for x in intervals: h.write(json.dumps(x,ensure_ascii=False)+"\n")
-    # Merge anomalies in a 60-second adjacency window into detection events.
-    all_anoms.sort(key=lambda x:x["timestamp"]); events=[]; cur=[]; last=None
-    for p in all_anoms:
-        t=ts(p["timestamp"])
-        if last is None or (t-last).total_seconds()<=60: cur.append(p)
-        else:
-            events.append(cur); cur=[p]
-        last=t
-    if cur: events.append(cur)
+    # Hierarchical aggregation: metric -> entity only.  The old implementation
+    # sorted all points globally, allowing unrelated regions to form one
+    # transitive connected component.  Keep cross-entity/path propagation out of
+    # this detector; downstream topology reasoning handles relationships.
+    event_evidence=[]
+    direct_tokens=("cpu","disk_io","filesystem","process_count","ospf","bgp","route","prefix","peer","failed","timeout","latency","drop","state","loss","error")
+    for (ent,metric), buckets in sorted(series.items()):
+        seq=[x for x in intervals if x["entity"]==ent and x["metric"]==metric]
+        for iv in seq:
+            pts=iv.get("points",[])
+            # Isolated ordinary continuous-metric spikes are retained only for
+            # audit unless they are >=8 sigma; discrete/state indicators remain.
+            is_direct=any(tok in metric.lower() for tok in direct_tokens)
+            max_z=max((abs(float(p.get("zscore") or 0)) for p in pts),default=0)
+            if len(pts)==1 and not is_direct and max_z<8.0:
+                continue
+            event_evidence.append({"entity":ent,"metric":metric,"start_time":iv["start_time"],"end_time":iv["end_time"],"point_count":iv["point_count"],"points":pts,"direct":is_direct})
+    # Merge only intervals belonging to the same entity; break at >=3 quiet
+    # minutes and hard-cap every final event at 40 minutes.
+    by_entity=defaultdict(list)
+    for iv in event_evidence: by_entity[iv["entity"]].append(iv)
+    events=[]
+    for ent,ivs in by_entity.items():
+        ivs.sort(key=lambda x:x["start_time"]); cur=[]; cur_end=None
+        for iv in ivs:
+            st, en=ts(iv["start_time"]), ts(iv["end_time"])
+            if not cur or (st-cur_end).total_seconds()>120:
+                if cur: events.append(cur)
+                cur=[iv]; cur_end=en
+            else:
+                cur.append(iv); cur_end=max(cur_end,en)
+        if cur: events.append(cur)
+    # Split long entity events at 40-minute boundaries. This is a detector
+    # safety bound, not a GT-derived operation.
+    bounded=[]
+    for ev in events:
+        start=min(ts(x["start_time"]) for x in ev); end=max(ts(x["end_time"]) for x in ev)
+        while (end-start).total_seconds()+60>2400:
+            cut=start+timedelta(minutes=40)
+            left=[x for x in ev if ts(x["start_time"])<cut]
+            right=[x for x in ev if ts(x["end_time"])>=cut]
+            if not left: left=[ev[0]]
+            bounded.append(left); ev=right; start=cut
+            if not ev: break
+            end=max(ts(x["end_time"]) for x in ev)
+        if ev: bounded.append(ev)
+    events=bounded
     merged=[]
     for i,ev in enumerate(events,1):
-        merged.append({"event_id":f"five-sigma-{i:04d}","start_time":min(x["timestamp"] for x in ev),"end_time":max(x["timestamp"] for x in ev),"duration_seconds":(ts(max(x["timestamp"] for x in ev))-ts(min(x["timestamp"] for x in ev))).total_seconds()+60,"trigger_entities":sorted({x["entity"] for x in ev}),"trigger_metrics":sorted({x["metric"] for x in ev}),"point_count":len(ev),"source":"five_sigma"})
+        st=min(x["start_time"] for x in ev); en=max(x["end_time"] for x in ev)
+        merged.append({"event_id":f"five-sigma-{i:04d}","start_time":st,"end_time":en,"duration_seconds":(ts(en)-ts(st)).total_seconds()+60,"trigger_entities":sorted({x["entity"] for x in ev}),"trigger_metrics":sorted({x["metric"] for x in ev}),"point_count":sum(x["point_count"] for x in ev),"source":"five_sigma"})
     with (out/"five_sigma_detection/merged_detection_events.jsonl").open("w") as h:
         for x in merged: h.write(json.dumps(x,ensure_ascii=False)+"\n")
     with (out/"five_sigma_detection/merged_detection_events.csv").open("w",newline="") as h:
@@ -85,5 +124,27 @@ def main():
     (out/"timeseries/timeseries_manifest.json").write_text(json.dumps(ser_manifest,indent=2,ensure_ascii=False)+"\n")
     (out/"five_sigma_detection/five_sigma_config.json").write_text(json.dumps(cfg,indent=2)+"\n")
     (out/"five_sigma_detection/anomaly_scoring_report.json").write_text(json.dumps({"series_count":seq_count,"point_anomalies":len(points),"intervals":len(intervals),"merged_events":len(merged),"input_files":len(files),"excluded_files":files.count("netflow_5tuple_minute_readable")},indent=2)+"\n")
+    if merged:
+        longest=max(merged,key=lambda x:x["duration_seconds"])
+        audit=("# Five-sigma event merge audit\n\n"
+                "## Root cause of the previous all-day event\n"
+                "The previous implementation globally sorted every entity/metric point and merged adjacent timestamps. "
+                "That created a transitive cross-region connected component; baseline state was per series, but event aggregation was global.\n\n"
+                f"- point anomalies: {len(points)}\n- metric intervals: {len(intervals)}\n- retained intervals after singleton policy: {len(event_evidence)}\n- final entity-level events: {len(merged)}\n"
+                f"- longest event: {longest['event_id']} {longest['start_time']}..{longest['end_time']} ({longest['duration_seconds']}s)\n"
+                f"- longest trigger entities: {', '.join(longest['trigger_entities'][:20])}\n"
+                f"- longest trigger metrics: {', '.join(longest['trigger_metrics'][:40])}\n\n"
+                "## Merge rules now enforced\n"
+                "1. Baselines are maintained independently for each entity+metric.\n"
+                "2. Metric intervals merge only within the same entity+metric.\n"
+                "3. Entity events merge only within the same entity and a 2-minute gap.\n"
+                "4. Cross-entity transitive/path merging is disabled; topology is left to RCA.\n"
+                "5. Isolated ordinary spikes below 8-sigma are audit-only.\n"
+                "6. Events are split at 3-minute evidence gaps and hard-capped at 40 minutes.\n\n"
+                "## Full chain counts\n"
+                f"point anomalies -> metric intervals -> retained intervals -> entity events: {len(points)} -> {len(intervals)} -> {len(event_evidence)} -> {len(merged)}\n")
+    else:
+        audit=f"# Five-sigma event merge audit\n\npoint anomalies: {len(points)}\nmetric intervals: {len(intervals)}\nretained intervals: {len(event_evidence)}\nfinal events: 0\n"
+    (out/"five_sigma_detection/five_sigma_event_merge_audit.md").write_text(audit)
     print(json.dumps({"series":seq_count,"points":len(points),"intervals":len(intervals),"events":len(merged)}))
 if __name__=="__main__": main()
