@@ -1,0 +1,7 @@
+PROMPT_VERSION: expanded-stage2-round3-v1
+Perform a fresh causal audit of every supplied Cxx. A downstream symptom is not
+automatically the root, but a service-vm or traffic-vm with the earliest direct
+local change can be the root. Prefer evidence-backed separation of candidates,
+use counter-evidence and recovery, and do not collapse scores into a tie. Do not
+output node IDs or fault types. Include every Cxx once in the strict JSON schema;
+all numeric components are finite and within [0,1].

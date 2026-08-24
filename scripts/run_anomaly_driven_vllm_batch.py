@@ -44,6 +44,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     for name in ("input_root", "stage1_source", "event_manifest", "taxonomy_file", "taxonomy_prompt_file", "config", "model_path", "output_dir"):
         ap.add_argument("--" + name.replace("_", "-"), type=Path, required=True)
+    ap.add_argument("--stage2-prompt-prefix", default="blind33")
     args = ap.parse_args()
     events = json.loads(args.event_manifest.read_text())
     manifest = {x["event_id"]: x for x in events}
@@ -79,7 +80,7 @@ def main() -> int:
         for round_id, seed in enumerate(cfg["stage2_seeds"], 1):
             stage2_requests.append({
                 "request_id": f"anomaly_stage2_{eid}_round{round_id}", "event_id": eid, "round_id": round_id,
-                "role": "32B-Stage2", "prompt_name": f"blind33_stage2_round{round_id}",
+                "role": "32B-Stage2", "prompt_name": f"{args.stage2_prompt_prefix}_stage2_round{round_id}",
                 "prompt_version": f"anomaly-stage2-round{round_id}-v1",
                 "payload": {"round": round_id, "seed": seed,
                     "incident_window": {"start": incident["fault_start_time_utc"], "end": incident["fault_end_time_utc"]},
@@ -162,7 +163,9 @@ def main() -> int:
     (args.output_dir / "model_manifest.json").write_text(json.dumps(backend.model_manifest(), indent=2) + "\n")
     (args.output_dir / "run_manifest.json").write_text(json.dumps({"event_count": len(predictions), "elapsed_seconds": time.perf_counter() - started,
         "git_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=PROJECT_ROOT, text=True).strip(),
-        "ground_truth_available_to_inference": False, "batch_scheduled": True}, indent=2) + "\n")
+        "ground_truth_available_to_inference": False, "batch_scheduled": True,
+        "stage2_prompt_prefix": args.stage2_prompt_prefix,
+        "candidate_budget": len(next(iter(contexts.values()))["shortlist"]) if contexts else 0}, indent=2) + "\n")
     print(json.dumps({"events": len(predictions), "success": sum(x["status"] == "success" for x in predictions)}))
     return 0
 

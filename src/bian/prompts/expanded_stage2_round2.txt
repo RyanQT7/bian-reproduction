@@ -1,0 +1,7 @@
+PROMPT_VERSION: expanded-stage2-round2-v1
+Independently compare all supplied Cxx root hypotheses. Do not infer a root from
+role popularity or topology centrality alone. Check earliest change time, direct
+local evidence, common upstream propagation, fault-pattern compatibility,
+recovery, and counter-evidence. Service and traffic nodes remain legal roots;
+unavailable_by_role is neutral. Never output node IDs or fault types. Score every
+Cxx exactly once and return only the schema JSON object with finite [0,1] scores.
